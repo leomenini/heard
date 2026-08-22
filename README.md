@@ -9,7 +9,7 @@
 
 hear + d. It's the joke `sshd` would make if it could. Reads as an English word, is exactly what the daemon does, and `heard: launching spotify` in a log line is funny.
 
-> **v1.3.** `heard listen` is both the foreground loop and the daemon: run it directly, or install the systemd unit and drive holds from compositor keybindings. Ctrl-C stops the foreground loop.
+> **v1.4.** `heard listen` is both the foreground loop and the daemon: run it directly, or install the systemd unit and drive holds from compositor keybindings. Ctrl-C stops the foreground loop.
 
 ---
 
@@ -37,7 +37,7 @@ heard: listening (hold to talk, release to send)
   heard: Ok(tool='volume_control', detail='volume up')  [hold 1.8s | stt tail 240ms | intent 58ms | dispatch 41ms fast 0.71]
 ```
 
-Spanish: `uv run heard config set language es` — switches STT decoding to
+Spanish: `uv run heard config set language es`: switches STT decoding to
 Spanish and swaps the embedding model to a cross-lingual one; the classifier
 understands both languages either way.
 
@@ -59,7 +59,7 @@ journalctl --user -u heard -f          # watch transcripts + results live
 Then bind hold-down/hold-up to any key. The binding pair uses press and
 release events of the same key:
 
-**Hyprland** (`hyprland.conf`) — bind = on press, bindr = on release:
+**Hyprland** (`hyprland.conf`; bind = on press, bindr = on release):
 
 ```ini
 bind  = , mouse:275, exec, heard hold down    # example: side mouse button
@@ -88,19 +88,39 @@ means the generative fallback ran.
 Requirements: a microphone, PipeWire (`wpctl`), and membership in the `input`
 group for key capture. Window/workspace tools use one of four backends
 (Hyprland, Sway, KDE, GNOME) detected from the session. On GNOME, install the
-tiny companion Shell extension — [`packaging/gnome-shell/`](packaging/gnome-shell/)
-— since stock shells disallow D-Bus Eval; without it heard falls back to Eval,
+tiny companion Shell extension,
+[`packaging/gnome-shell/`](packaging/gnome-shell/),
+since stock shells disallow D-Bus Eval; without it heard falls back to Eval,
 which only works in unsafe mode.
 First run downloads Whisper + MiniLM weights (~200MB total) into local caches.
 
 ---
 
+## Query mode (spoken answers)
+
+Transcripts starting with **question** or **pregunta** skip intent resolution
+and go to an OpenAI-compatible chat endpoint you configure yourself (opt-in,
+the only networked feature besides optional gTTS):
+
+```bash
+uv run heard config set llm_url https://api.example.com/v1/chat/completions
+uv run heard config set llm_api_key sk-...
+uv run heard config set llm_model gpt-4o-mini   # endpoint-dependent
+```
+
+The answer prints and is spoken out loud (background thread, daemon stays
+responsive). Speech is local-first: piper runs fully offline after its
+one-time voice download; auto chain is piper -> gtts -> flite -> console,
+pinned via `tts_backend`, disabled entirely with `tts_backend = none`.
+
+---
+
 ## How it works
 
-1. Hold left Shift — evdev captures key state (no X11/Wayland dependency). Devices are selected by actual keycode capability, so PTT lands on your keyboard instead of the first "Power Button".
+1. Hold left Shift: evdev captures key state (no X11/Wayland dependency). Devices are selected by actual keycode capability, so PTT lands on your keyboard instead of the first "Power Button".
 2. Audio streams continuously into a ring buffer; while the key is down, any segment ending in a ≥180ms pause is transcribed in a background thread (faster-whisper base, int8). Release only pays the post-pause tail.
-3. Resolve intent: the transcript is embedded and matched against precomputed intent centroids — dispatch in single-digit ms when confident, cheap decline for off-topic, generative Needle decode only when unsure.
-4. Dispatch to the matching tool handler (launch, media, volume, window, workspace, system query).
+3. Resolve intent: the transcript is embedded and matched against precomputed intent centroids; dispatch in single-digit ms when confident, cheap decline for off-topic, generative Needle decode only when unsure. Transcripts starting with "question"/"pregunta" branch to query mode instead.
+4. Dispatch to the matching tool handler (launch, media, volume, microphone, window, workspace, screen record, system query).
 5. Print the resolved tool call immediately, then the result with stage timings.
 
 ---
@@ -128,7 +148,7 @@ Full methodology + tuning tables: [`reports/latency.md`](reports/latency.md).
 
 ## Why Needle?
 
-heard routes spoken commands to tool calls. That is a classification problem, not a general reasoning problem. Needle — a 26M parameter function-call model — stays at the core for three reasons:
+heard routes spoken commands to tool calls. That is a classification problem, not a general reasoning problem. Needle, a 26M parameter function-call model, stays at the core for three reasons:
 
 **Speed.** A larger LLM adds seconds of latency on consumer hardware. Generation is now the *fallback*, not the path: the common command resolves through embedding classification and slot lookup in well under 100ms; only ambiguous phrasings pay the ~6.5s decode. The bundled checkpoint's contrastive head was decayed to zero by pretraining, so the embeddings come from an int8 ONNX MiniLM instead (`embedder.py` picks this automatically; `HEARD_EMBEDDER=needle|fastembed` forces one).
 
@@ -141,18 +161,20 @@ heard routes spoken commands to tool calls. That is a classification problem, no
 | `question ...` query mode | yes (opt-in) | requires configuring `llm_url` yourself |
 | model downloads | first run only | Whisper + MiniLM + piper voices (~200MB total) into local caches |
 
-**Specialization.** A 7B+ general-purpose model dedicates most of its capacity to knowledge and dialogue. Needle is trained specifically for function-call extraction; tool descriptions steer it (tightening them alone moved probe accuracy 75% → 92%). It is not a chat model and never answers questions — open-ended input is declined in milliseconds by the classifier's unknown centroid, not sent anywhere.
+**Specialization.** A 7B+ general-purpose model dedicates most of its capacity to knowledge and dialogue. Needle is trained specifically for function-call extraction; tool descriptions steer it (tightening them alone moved probe accuracy 75% → 92%). It is not a chat model and never answers questions: open-ended input is declined in milliseconds by the classifier's unknown centroid, not sent anywhere.
 
 ---
 
-## Tools (v0.1)
+## Tools
 
 | Tool | Handler | What it does |
 |---|---|---|
-| `launch_app` | `tools/apps.py` | Focus-or-launch: fuzzy-matches running windows via `hyprctl clients -j`, focuses if already open, else launches through uwsm. Spoken names resolve against installed `.desktop` entries (rapidfuzz) |
-| `media_control` | `tools/media.py` | Play, pause, next, previous over MPRIS — one persistent D-Bus connection (jeepney), playerctl fallback |
-| `volume_control` | `tools/volume.py` | Up, down, mute, set percent — percentages parsed from speech ("fifty", "65%", "half") |
-| `window_action` | `tools/window.py` | Close, fullscreen via hyprctl; focus falls back to generative parsing (needs targets) |
+| `launch_app` | `tools/apps.py` | Focus-or-launch: fuzzy-matches running windows via the WM backend, focuses if already open, else launches through uwsm. Spoken names resolve against installed `.desktop` entries (rapidfuzz) |
+| `media_control` | `tools/media.py` | Play, pause, next, previous over MPRIS: one persistent D-Bus connection (jeepney), playerctl fallback |
+| `volume_control` | `tools/volume.py` | Up, down, mute, set percent: percentages parsed from speech ("fifty", "65%", "half") |
+| `microphone_control` | `tools/microphone.py` | Mute or unmute the default microphone source via wpctl |
+| `screen_record` | `tools/screen_record.py` | Start/stop screen recording; wf-recorder on Wayland, ffmpeg x11grab fallback. Spoken screen labels map to outputs via config; files land in `screenrecord_folder` |
+| `window_action` | `tools/window.py` | Close, fullscreen, focus via the WM backend; focus targets fuzzy-match open windows (generative parsing for targets) |
 | `workspace_switch` | `tools/workspace.py` | Switch by number, digits or words ("workspace three") |
 | `system_query` | `tools/system_query.py` | Battery, time, network, disk status |
 
@@ -185,13 +207,18 @@ The dispatcher never passes raw model output to a shell. Arguments are validated
 
 | Key | Default | Purpose |
 |---|---|---|
-| `language` | `"en"` | `"en"` \| `"es"` — STT decode language + embedder pick; classifier is always bilingual |
+| `language` | `"en"` | `"en"` \| `"es"`: STT decode language + embedder pick; classifier is always bilingual |
 | `ptt_key` | `"KEY_LEFTSHIFT"` | any evdev `KEY_*` name |
+| `checkpoint` | `""` | Needle weights path override; empty resolves `$HEARD_CHECKPOINT`, then any `checkpoints/*.pkl` |
 | `embedder_model` | auto per language | explicit fastembed model override |
 | `stt_model_size` | `"base"` | faster-whisper size (`tiny`/`base`/`small`) |
+| `stt_cpu_threads` | auto | pin ctranslate2 threads; try 2 on hybrid CPUs |
 | `wm_backend` | `"auto"` | `auto` \| `hyprland` \| `sway` \| `kde` \| `gnome` (KDE windows via kdotool, workspaces/fullscreen via KWin scripting; GNOME via the companion Shell extension) |
 | `events` | `true` | local JSONL usage log |
-| `tts_backend` | auto | `""`(auto: piper→gtts→flite) \| `piper` \| `gtts` \| `flite` \| `none` — spoken answers for query mode |
+| `tts_enabled` | `true` | speak query answers out loud |
+| `tts_backend` | auto | `""`(auto: piper→gtts→flite) \| `piper` \| `gtts` \| `flite` \| `none`: spoken answers for query mode |
+| `llm_url` / `llm_api_key` / `llm_model` | empty | OpenAI-compatible endpoint powering query mode |
+| `screenrecord_output` / `screenrecord_outputs` / `screenrecord_folder` | `~/Videos` | default output, spoken-label map (`One=DP-1`), save folder for screen_record |
 
 Env vars override config for tuning and debugging:
 
@@ -206,7 +233,7 @@ Env vars override config for tuning and debugging:
 | `HEARD_DICT_FLOOR` | `0.40` | launch_app accept bar when a strict `.desktop` hit corroborates |
 | `HEARD_DICT_CUTOFF` | `90` | rapidfuzz score for that dictionary hit |
 
-Tune thresholds from benchmark output, not feel — misaccepts are the hard gate.
+Tune thresholds from benchmark output, not feel: misaccepts are the hard gate.
 
 ---
 
@@ -222,6 +249,7 @@ heard/
 │   ├── intent.py                # fast path first, generative fallback, checkpoint resolution
 │   ├── classifier.py            # bilingual prototypes, centroids, gating, slot extraction
 │   ├── embedder.py              # needle-contrastive / fastembed backends
+│   ├── llm_query.py             # question/pregunta branch: LLM answer + TTS chain
 │   ├── config.py                # config.toml load/save
 │   ├── ipc.py                   # unix-socket hold server + one-shot clients
 │   ├── lock.py                  # single-instance flock guard
@@ -231,20 +259,22 @@ heard/
 │       ├── registry.py          # name -> handler dispatch + validate
 │       ├── types.py             # Ok, Rejected, Failed, ParamSpec, Entry
 │       ├── apps.py              # focus-or-launch over the WM backend
-│       ├── media.py             # MPRIS over jeepney, playerctl fallback
+│       ├── media.py              # MPRIS over jeepney, playerctl fallback
 │       ├── volume.py            # wpctl
+│       ├── microphone.py        # mic mute/unmute via wpctl
+│       ├── screen_record.py     # wf-recorder / ffmpeg x11grab, pidfile state
 │       ├── window.py            # close/focus/fullscreen via WM backend
 │       ├── workspace.py         # workspace switch via WM backend
 │       ├── system_query.py      # battery, time, network, disk
 │       └── helpers/
-│           ├── wm.py            # Hyprland / Sway / KDE backends
+│           ├── wm.py            # Hyprland / Sway / KDE / GNOME backends (GNOME: extension first, Eval fallback)
 │           ├── apps.py          # .desktop enumeration (all locales) + rapidfuzz
 │           ├── network.py       # connectivity checks
 │           └── system.py        # format_bytes etc.
 ├── packaging/systemd/heard.service
 ├── packaging/gnome-shell/heard@heard/  # companion Shell extension: D-Bus window tools
 ├── tests/                       # 299 tests across 26 files
-├── checkpoints/                 # gitignored — needle weights
+├── checkpoints/                 # gitignored: needle weights
 ├── scripts/
 │   ├── benchmark_latency.py     # per-stage probes: --only intent|stt|dispatch|needle [--audio clip.wav]
 │   └── export_fallback.py       # fallback-speed spike: step profile + ONNX attempt
@@ -273,15 +303,15 @@ uv run python scripts/benchmark_latency.py --audio cmd.wav
 - ✅ Classifier-accepted commands resolve intent in <100ms post-STT.
 - ✅ Daemon mode: systemd unit, single-instance lock, unix-socket hold bindings for Hyprland/Sway/KDE.
 - ✅ Local JSONL event log for threshold tuning.
-- ⏳ End-to-end key-release → feedback under 1s on i5-1335U — STT tail numbers being collected from live `[...]` lines; fill [`reports/latency.md`](reports/latency.md).
-- ✅ Generative Needle remains fallback-only (fires on 1–3 of 20 typical commands).
+- ⏳ End-to-end key-release → feedback under 1s on i5-1335U: STT tail numbers being collected from live `[...]` lines; fill [`reports/latency.md`](reports/latency.md).
+- ✅ Generative Needle remains fallback-only (fires on 1-3 of 20 typical commands).
 - ✅ Unresolvable input prints a declined/unparseable message; it never crashes.
 
 ## Known limitations
 
 - Bilingual EN/ES only; more languages need prototypes + a multilingual embedder entry (mechanism exists).
-- The bundled Needle checkpoint has an untrained contrastive head — the fast path therefore depends on fastembed (one-time model download). A retrieval-finetuned checkpoint would flip `HEARD_EMBEDDER=needle` back on.
-- Generative fallback costs seconds (fp32 JAX decode); fine at 5–15% traffic, painful above it.
+- The bundled Needle checkpoint has an untrained contrastive head: the fast path therefore depends on fastembed (one-time model download). A retrieval-finetuned checkpoint would flip `HEARD_EMBEDDER=needle` back on.
+- Generative fallback costs seconds (fp32 JAX decode); fine at 5-15% traffic, painful above it.
 - GNOME needs the companion Shell extension for full support; without it only unsafe-mode shells work (Eval fallback).
 
 ---
