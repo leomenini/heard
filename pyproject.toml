@@ -7,11 +7,21 @@ requires-python = ">=3.13"
 dependencies = [
     "evdev>=1.9.3",
     "faster-whisper>=1.2.1",
+    "fastembed>=0.7.3",
+    "jeepney>=0.9.0",
     "needle",
     "psutil>=7.2.2",
+    "rapidfuzz>=3.14.1",
     "sounddevice>=0.5.5",
     "typer>=0.27.0",
 ]
+
+[project.scripts]
+heard = "heard.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
