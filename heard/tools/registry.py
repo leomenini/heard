@@ -1,6 +1,7 @@
 from .apps import launch_app
 from .media import media_control
 from .microphone import microphone_control
+from .screen_record import screen_record
 from .system_query import system_query
 from .types import Entry, Failed, ParamSpec, Rejected, Result
 from .volume import volume_control
@@ -40,6 +41,20 @@ REGISTRY: dict[str, Entry] = {
                 required=True,
                 enum=frozenset({"mute", "unmute"}),
             ),
+        },
+    ),
+    "screen_record": Entry(
+        fn=screen_record,
+        description=(
+            "Start or stop a screen recording. Use 'start [screen]' to record "
+            "a specific display; omit the screen to record the default one."
+        ),
+        params={
+            "action": ParamSpec(
+                required=True,
+                enum=frozenset({"start", "stop"}),
+            ),
+            "screen": ParamSpec(required=False),
         },
     ),
     "media_control": Entry(

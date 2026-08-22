@@ -265,6 +265,19 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "espacio de trabajo dos",
         "cambia al escritorio cuatro",
     ]),
+    "screen_record:start": ("screen_record", {"action": "start"}, [
+        "screenrecord start",
+        "start screen recording",
+        "start recording the screen",
+        "grabar pantalla",
+        "empezar grabación",
+    ]),
+    "screen_record:stop": ("screen_record", {"action": "stop"}, [
+        "screenrecord stop",
+        "stop screen recording",
+        "stop recording",
+        "detener grabación",
+    ]),
     "unknown:x": ("__unknown__", {}, [
         "what is the weather tomorrow",
         "tell me a joke",

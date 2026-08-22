@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 — Unreleased
+
+**Screen recording**
+- New `screen_record` tool: `screenrecord start` / `screenrecord stop`.
+- Records the default display or a named one (`screenrecord start One`).
+- Display labels are mapped to output names via `screenrecord_outputs`
+  (e.g. `One=DP-1,Two=HDMI-1`); `screenrecord_output` sets the default.
+- Recordings are saved to `screenrecord_folder` (default `~/Videos`).
+- Uses `wf-recorder` on Wayland, falls back to `ffmpeg -f x11grab` on X11.
+- State is tracked in a pidfile so `stop` finalises the file.
+
 ## 1.1.0 — Unreleased
 
 **Query mode**

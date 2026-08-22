@@ -22,6 +22,9 @@ class TestConfigLoad:
         assert cfg["llm_api_key"] == ""
         assert cfg["llm_model"] == ""
         assert cfg["tts_enabled"] is True
+        assert cfg["screenrecord_output"] == ""
+        assert cfg["screenrecord_outputs"] == ""
+        assert cfg["screenrecord_folder"] == "~/Videos"
 
     def test_unknown_keys_ignored(self, isolated_config):
         isolated_config.write_text('language = "es"\nbogus = 1\n')

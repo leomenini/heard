@@ -25,6 +25,9 @@ DEFAULTS: dict[str, str | bool] = {
     "llm_api_key": "",           # Bearer token for llm_url
     "llm_model": "",             # e.g. gpt-4o-mini; required by most endpoints
     "tts_enabled": True,         # speak LLM answers out loud
+    "screenrecord_output": "",   # default display output (e.g. DP-1)
+    "screenrecord_outputs": "",  # label map: One=DP-1,Two=HDMI-1
+    "screenrecord_folder": "~/Videos",
 }
 
 VALID_LANGUAGE = ("en", "es")

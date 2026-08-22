@@ -6,14 +6,15 @@ from heard.tools.types import Ok, ParamSpec, Rejected
 
 
 class TestREGISTRY:
-    def test_has_seven_tools(self):
-        assert len(REGISTRY) == 7
+    def test_has_eight_tools(self):
+        assert len(REGISTRY) == 8
 
     def test_all_tool_names(self):
         names = set(REGISTRY.keys())
         assert names == {
             "system_query", "volume_control", "microphone_control",
-            "media_control", "launch_app", "window_action", "workspace_switch",
+            "screen_record", "media_control", "launch_app",
+            "window_action", "workspace_switch",
         }
 
     def test_every_entry_is_entry(self):
@@ -36,9 +37,9 @@ class TestREGISTRY:
 
 
 class TestKnownTools:
-    def test_returns_seven_tools(self):
+    def test_returns_eight_tools(self):
         tools = known_tools()
-        assert len(tools) == 7
+        assert len(tools) == 8
 
     def test_schema_matches_registry(self):
         tools = known_tools()
@@ -139,6 +140,13 @@ class TestDispatch:
         r = dispatch({"name": "microphone_control", "arguments": {"action": "mute"}})
         assert isinstance(r, Ok)
         assert r.tool == "microphone_control"
+
+    @mock.patch("heard.tools.screen_record._start_recording")
+    def test_valid_screen_record_start(self, mock_start):
+        mock_start.return_value = Ok("screen_record", "recording")
+        r = dispatch({"name": "screen_record", "arguments": {"action": "start"}})
+        assert isinstance(r, Ok)
+        assert r.tool == "screen_record"
 
     def test_valid_system_query_battery(self):
         r = dispatch({"name": "system_query", "arguments": {"query": "battery"}})
