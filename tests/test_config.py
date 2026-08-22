@@ -60,3 +60,13 @@ class TestCachedSnapshot:
         config.set_key("language", "es")
         after = config.cached("language")
         assert before == "en" and after == "es"
+
+
+class TestCpuThreads:
+    def test_default_is_auto(self):
+        assert config.get("stt_cpu_threads") == ""
+
+    def test_numeric_roundtrip(self, isolated_config):
+        config.set_key("stt_cpu_threads", "2")
+        config._cached_load.cache_clear()
+        assert config.get("stt_cpu_threads") == "2"

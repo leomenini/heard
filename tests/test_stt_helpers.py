@@ -103,6 +103,7 @@ class TestHoldSessionDrain:
         assert session.text() == "hello world"
 
     def test_pause_finalizes_mid_hold(self, monkeypatch):
+        monkeypatch.setattr(stt, "HOLD_STREAM_THRESHOLD_S", 0)
         first = np.concatenate([tone(1.0), silence(0.35)])   # pause > TRAIL_SILENCE + pad
         session, bus = make_session([first])
         calls = []

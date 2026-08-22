@@ -32,7 +32,7 @@ class TestVolumeControl:
     def test_set_missing_amount(self):
         r = volume_control("set")
         assert isinstance(r, Rejected)
-        assert r.kind == "bad_args"
+        assert r.kind == "invalid_value"
 
     def test_bad_action(self):
         r = volume_control("shutdown")
@@ -43,3 +43,30 @@ class TestVolumeControl:
     def test_missing_wpctl(self, mock_run):
         r = volume_control("up")
         assert isinstance(r, Failed)
+
+
+class TestUnmute:
+    @mock.patch("heard.tools.volume.subprocess.run")
+    def test_unmute_sets_mute_zero(self, mock_run):
+        r = volume_control("unmute")
+        assert isinstance(r, Ok)
+        assert "set-mute" in mock_run.call_args[0][0]
+        assert "0" in mock_run.call_args[0][0]
+
+    @mock.patch("heard.tools.volume.subprocess.run")
+    def test_mute_sets_mute_one(self, mock_run):
+        volume_control("mute")
+        assert "1" in mock_run.call_args[0][0]
+
+    @mock.patch("heard.tools.volume.subprocess.run")
+    def test_amount_dropped_for_non_set(self, mock_run):
+        volume_control("mute", amount="sounds")     # junk slot from model
+        cmd = mock_run.call_args[0][0]
+        assert "%" not in " ".join(cmd)
+
+    @mock.patch("heard.tools.volume.subprocess.run")
+    def test_set_rejects_non_numeric(self, mock_run):
+        r = volume_control("set", amount="sounds")
+        assert isinstance(r, Rejected)
+        assert r.kind == "invalid_value"
+        mock_run.assert_not_called()

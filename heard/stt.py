@@ -16,10 +16,23 @@ WHISPER_SIZE = "base"
 FRAME_MS = 20                      # VAD frame size
 TRAIL_SILENCE_S = 0.18             # pause length that finalizes a segment
 MIN_SEGMENT_S = 0.60               # don't bother finalizing shorter segments
+HOLD_STREAM_THRESHOLD_S = 6.0      # below this, hold audio in one piece:
+                                   # transcribe() has a large fixed cost, so
+                                   # splitting short holds only doubles it
 MIN_SPEECH_S = 0.15                # trim results shorter than this -> ""
 SPEECH_RMS_RATIO = 0.07            # frame is speech if rms > ratio * peak
 SPEECH_RMS_FLOOR = 3e-4            # ...and above this absolute floor
 POLL_S = 0.03
+
+
+def _cpu_threads() -> int:
+    try:
+        from . import config
+
+        raw = str(config.cached("stt_cpu_threads") or "").strip()
+    except Exception:
+        return 0                     # 0 = let ctranslate2 decide
+    return int(raw) if raw.isdigit() else 0
 
 
 @functools.lru_cache(maxsize=1)
@@ -30,7 +43,8 @@ def _model():
         size = str(config.cached("stt_model_size") or WHISPER_SIZE)
     except Exception:
         size = WHISPER_SIZE
-    return WhisperModel(size, device="cpu", compute_type="int8")
+    return WhisperModel(size, device="cpu", compute_type="int8",
+                        cpu_threads=_cpu_threads())
 
 
 def _stt_language() -> str | None:
@@ -255,6 +269,7 @@ class HoldSession:
         self._parts: list[str] = []
         self._lock = threading.Lock()
         self._seg_start = self.start_pos
+        self._start_t = time.perf_counter()
         self.error: Exception | None = None
 
     def text(self) -> str:
@@ -283,6 +298,11 @@ class HoldSession:
                 released and len(seg) > SAMPLE_RATE // 20
             ):
                 break
+            if not released:
+                # transcribe() pays a big fixed fee; only split long holds
+                hold_elapsed = time.perf_counter() - self._start_t
+                if hold_elapsed < HOLD_STREAM_THRESHOLD_S:
+                    break
             cut = None if released else trailing_silence_start(seg)
             piece_end = len(seg) if cut is None else cut
             if cut is None:

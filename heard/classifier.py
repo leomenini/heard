@@ -135,6 +135,18 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "mutear",
         "quita el sonido",
     ]),
+    "volume_control:unmute": ("volume_control", {"action": "unmute"}, [
+        "unmute",
+        "unmute the audio",
+        "mute off",
+        "turn mute off",
+        "give me sound back",
+        "sound on",
+        "desmutear",
+        "quita el silencio",
+        "reactiva el sonido",
+        "sonido otra vez",
+    ]),
     "volume_control:set": ("volume_control", {"action": "set"}, [
         "set the volume to fifty percent",
         "set volume to seventy percent",

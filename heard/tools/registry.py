@@ -19,11 +19,14 @@ REGISTRY: dict[str, Entry] = {
     ),
     "volume_control": Entry(
         fn=volume_control,
-        description="Change or mute system audio volume.",
+        description=(
+            "Change system volume or its mute state. Use action 'unmute' "
+            "to restore sound after muting."
+        ),
         params={
             "action": ParamSpec(
                 required=True,
-                enum=frozenset({"up", "down", "mute", "set"}),
+                enum=frozenset({"up", "down", "mute", "unmute", "set"}),
             ),
             "amount": ParamSpec(required=False),
         },

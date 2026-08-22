@@ -127,3 +127,48 @@ class TestLanguageConfig:
             stt._model.cache_clear()
             cfg._cached_load.cache_clear()
 
+
+
+class TestStreamingThreshold:
+    def test_short_hold_does_not_finalize_mid_stream(self, monkeypatch):
+        """Below HOLD_STREAM_THRESHOLD_S, pauses must NOT split the hold."""
+        monkeypatch.setattr(stt, "HOLD_STREAM_THRESHOLD_S", 999)
+        import threading
+        from collections import deque
+
+        from heard.stt import AudioBus, HoldSession
+
+        bus = AudioBus.__new__(AudioBus)
+        bus._chunks, bus._offsets, bus._total = deque(), deque(), 0
+        bus._lock = threading.Lock()
+        session = HoldSession(bus)
+
+        tone = np.sin(np.linspace(0, 400, 16000)).astype(np.float32) * 0.3
+        silence = np.zeros(6000, dtype=np.float32)
+        bus._on_audio(np.concatenate([tone, silence]).reshape(-1, 1), 22000, None, None)
+
+        called = []
+        monkeypatch.setattr(stt, "transcribe", lambda a: called.append(len(a)) or "x")
+        did = session._drain(bus.pos(), released=False)
+        assert not did and not called
+
+    def test_threshold_respects_override(self, monkeypatch):
+        """With threshold ~0 the old streaming behavior returns."""
+        monkeypatch.setattr(stt, "HOLD_STREAM_THRESHOLD_S", 0)
+        import threading
+        from collections import deque
+
+        from heard.stt import AudioBus, HoldSession
+
+        bus = AudioBus.__new__(AudioBus)
+        bus._chunks, bus._offsets, bus._total = deque(), deque(), 0
+        bus._lock = threading.Lock()
+        session = HoldSession(bus)
+
+        first = np.concatenate([np.sin(np.linspace(0, 400, 16000)).astype(np.float32) * 0.3,
+                                np.zeros(6000, dtype=np.float32)])
+        bus._on_audio(first.reshape(-1, 1), len(first), None, None)
+
+        monkeypatch.setattr(stt, "transcribe", lambda a: "piece")
+        did = session._drain(bus.pos(), released=False)
+        assert did and session.text() == "piece"

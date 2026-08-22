@@ -56,7 +56,8 @@ class TestKnownTools:
     def test_enum_in_schema(self):
         tools = known_tools()
         vol = next(t for t in tools if t["name"] == "volume_control")
-        assert vol["parameters"]["action"]["enum"] == sorted(["up", "down", "mute", "set"])
+        assert vol["parameters"]["action"]["enum"] == sorted(
+            ["up", "down", "mute", "unmute", "set"])
 
 
 class TestValidate:

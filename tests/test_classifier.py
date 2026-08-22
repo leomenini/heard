@@ -158,3 +158,14 @@ class TestSpanishClassification:
     def test_off_topic_es_never_dispatches(self, classifier):
         v = classifier.match("cuéntame un chiste")
         assert v.tool_call is None
+
+
+class TestUnmuteRouting:
+    def test_mute_off_routes_to_unmute(self, classifier):
+        v = classifier.match("mute off")
+        assert v.tool_call is not None
+        assert v.tool_call["arguments"]["action"] == "unmute"
+
+    def test_plain_still_mutes(self, classifier):
+        v = classifier.match("silencia")
+        assert v.tool_call["arguments"]["action"] == "mute"

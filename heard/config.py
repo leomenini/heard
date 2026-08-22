@@ -17,6 +17,7 @@ DEFAULTS: dict[str, str | bool] = {
     "ptt_key": "KEY_LEFTSHIFT",
     "embedder_model": "",        # empty = auto per language
     "stt_model_size": "base",    # tiny | base | small
+    "stt_cpu_threads": "",       # empty = ctranslate2 default; try 2 on hybrid CPUs
     "wm_backend": "auto",        # auto | hyprland | sway | kde
     "events": True,              # append local JSONL usage log
 }
