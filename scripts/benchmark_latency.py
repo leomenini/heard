@@ -64,6 +64,31 @@ OFF_TOPIC = [
     "Remind me to call mom",
 ]
 
+PROBES_ES = [
+    ("qué hora es", "system_query"),
+    ("cómo va la batería", "system_query"),
+    ("estado de la red", "system_query"),
+    ("cuánto espacio hay en el disco", "system_query"),
+    ("sube el volumen", "volume_control"),
+    ("baja el volumen un poco", "volume_control"),
+    ("silencia", "volume_control"),
+    ("pon el volumen al cincuenta por ciento", "volume_control"),
+    ("reproduce música", "media_control"),
+    ("pausa la música", "media_control"),
+    ("siguiente canción", "media_control"),
+    ("canción anterior", "media_control"),
+    ("abre firefox", "launch_app"),
+    ("cierra esta ventana", "window_action"),
+    ("pantalla completa", "window_action"),
+    ("ve al espacio de trabajo tres", "workspace_switch"),
+]
+
+OFF_TOPIC_ES = [
+    "cuéntame un chiste",
+    "qué tiempo hará mañana",
+    "recuérdame llamar a mamá",
+]
+
 
 def _pct(latencies):
     latencies = sorted(latencies)
@@ -219,11 +244,15 @@ def bench_intent_stages():
 
     for query, expected in PROBES:
         print(run_one(query, expected))
+    for query, expected in PROBES_ES:
+        print(run_one(query, expected))
     for query in OFF_TOPIC:
         print(run_one(query, None))
+    for query in OFF_TOPIC_ES:
+        print(run_one(query, None))
 
-    n = len(PROBES)
-    print(f"\n  fast-path accepted {fast_ok}/{n}, misaccepted {misfast}, "
+    n = len(PROBES) + len(PROBES_ES)
+    print(f"\n  fast-path accepted {fast_ok}/{n} (en+es), misaccepted {misfast}, "
           f"wrongly declined {declined_wrong}, fell back to needle {fallback}")
     print(f"  fallback accuracy on its share: {fallback_ok}/{fallback}")
     top_sims.sort()

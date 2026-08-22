@@ -25,7 +25,24 @@ POLL_S = 0.03
 
 @functools.lru_cache(maxsize=1)
 def _model():
-    return WhisperModel(WHISPER_SIZE, device="cpu", compute_type="int8")
+    try:
+        from . import config
+
+        size = str(config.cached("stt_model_size") or WHISPER_SIZE)
+    except Exception:
+        size = WHISPER_SIZE
+    return WhisperModel(size, device="cpu", compute_type="int8")
+
+
+def _stt_language() -> str | None:
+    """Configured language; None lets whisper auto-detect."""
+    try:
+        from . import config
+
+        lang = str(config.cached("language") or "en").lower()
+    except Exception:
+        return "en"
+    return None if lang == "auto" else lang
 
 
 def warmup() -> None:
@@ -33,7 +50,7 @@ def warmup() -> None:
     bus = _bus()
     model = _model()
     silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
-    next(iter(model.transcribe(silence, language="en",
+    next(iter(model.transcribe(silence, language=_stt_language(),
                                beam_size=1, temperature=0.0)[0]), None)
 
 
@@ -215,7 +232,7 @@ def transcribe(audio: np.ndarray) -> str:
     model = _model()
     segments, _ = model.transcribe(
         audio[bounds[0]:bounds[1]],
-        language="en",
+        language=_stt_language(),
         beam_size=1,
         temperature=0.0,
         condition_on_previous_text=False,

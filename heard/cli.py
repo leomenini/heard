@@ -15,11 +15,13 @@ def _fmt_call(call: dict) -> str:
 @app.command()
 def listen():
     """Start the voice-control loop: hold the PTT key, speak, release."""
-    from . import stt, intent
+    from . import stt, intent, config
     from .tools import registry
 
+    cfg = config.load()
+    ptt_key = str(cfg["ptt_key"])
     try:
-        devs = stt.check_ptt()
+        devs = stt.check_ptt(ptt_key)
     except RuntimeError as e:
         typer.secho(f"heard: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
@@ -30,12 +32,12 @@ def listen():
     stt.warmup()
     intent.warmup()
     print(f"heard: ready in {time.perf_counter() - t0:.1f}s")
-    print(f"heard: ptt via {names}")
-    print("heard: listening (hold Shift, speak, release)")
+    print(f"heard: language={cfg['language']}  ptt={ptt_key} via {names}")
+    print("heard: listening (hold to talk, release to send)")
     print("heard: press Ctrl-C to stop")
     try:
         while True:
-            cap = stt.capture()
+            cap = stt.capture(ptt_key)
             if not cap.text:
                 continue
             print(f"  you: {cap.text}", flush=True)
@@ -69,20 +71,36 @@ def listen():
 
 @config_app.command()
 def get(key: str):
-    """Print a single configuration value by dotted key (e.g. wm.backend)."""
-    typer.echo(f"{key} = (not implemented yet)")
+    """Print a single configuration value by key (e.g. language)."""
+    from . import config
+
+    try:
+        typer.echo(f"{key} = {config.get(key)}")
+    except KeyError as e:
+        typer.secho(str(e), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from e
 
 
 @config_app.command()
 def set(key: str, value: str):
-    """Set a configuration value by dotted key."""
-    typer.echo(f"set {key} = {value} (not implemented yet)")
+    """Set a configuration value (e.g. heard config set language es)."""
+    from . import config
+
+    try:
+        config.set_key(key, value)
+    except (KeyError, ValueError) as e:
+        typer.secho(str(e), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from e
+    typer.echo(f"set {key} = {value} in {config.config_path()}")
 
 
 @config_app.command()
 def show():
-    """Print the full merged configuration (configured + detected)."""
-    typer.echo("(not implemented yet)")
+    """Print the full effective configuration."""
+    from . import config
+
+    for key, value in sorted(config.load().items()):
+        typer.echo(f"{key} = {value}")
 
 
 def main():

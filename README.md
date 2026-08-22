@@ -30,12 +30,16 @@ Hold **Left Shift**, speak, release. Output looks like:
 
 ```
 heard: ready in 21.4s
-heard: ptt via AT Translated Set 2 keyboard
-heard: listening (hold Shift, speak, release)
+heard: language=en  ptt=KEY_LEFTSHIFT via AT Translated Set 2 keyboard
+heard: listening (hold to talk, release to send)
   you: volume up
   heard: volume_control(action='up')
   heard: Ok(tool='volume_control', detail='volume up')  [hold 1.8s | stt tail 240ms | intent 58ms | dispatch 41ms fast 0.71]
 ```
+
+Spanish: `uv run heard config set language es` — switches STT decoding to
+Spanish and swaps the embedding model to a cross-lingual one; the classifier
+understands both languages either way.
 
 Every command prints a per-stage breakdown: `hold` is your speaking time,
 `stt tail` is transcription cost *after* key release (streaming during the
@@ -125,12 +129,26 @@ evdev (capability-matched PTT devices)
 
 The dispatcher never passes raw model output to a shell. Arguments are validated against registry enums; the model selects an allowlisted action (`shell_allowlist.py`), never arbitrary shell text.
 
-### Configuration (env)
+### Configuration
+
+`~/.config/heard/config.toml`, managed via `uv run heard config get|set|show`
+(`HEARD_CONFIG` overrides the path):
+
+| Key | Default | Purpose |
+|---|---|---|
+| `language` | `"en"` | `"en"` \| `"es"` — STT decode language + embedder pick; classifier is always bilingual |
+| `ptt_key` | `"KEY_LEFTSHIFT"` | any evdev `KEY_*` name |
+| `embedder_model` | auto per language | explicit fastembed model override |
+| `stt_model_size` | `"base"` | faster-whisper size (`tiny`/`base`/`small`) |
+| `events` | `true` | local JSONL usage log |
+
+Env vars override config for tuning and debugging:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `HEARD_CHECKPOINT` | `checkpoints/needle_checkpoint.pkl` | Needle weights path (any `*.pkl` in `checkpoints/` also works) |
-| `HEARD_EMBEDDER` | `auto` | `needle` \| `fastembed` \| `auto` (auto probes needle's contrastive head and falls back to MiniLM) |
+| `HEARD_CHECKPOINT` | `checkpoints/needle_checkpoint.pkl` | Needle weights (any `*.pkl` in `checkpoints/` also works) |
+| `HEARD_EMBEDDER` | `auto` | `needle` \| `fastembed` \| `auto` |
+| `HEARD_EMBED_MODEL` | per language | exact fastembed model name |
 | `HEARD_ACCEPT_SCORE` | `0.55` | min cosine to accept a centroid outright |
 | `HEARD_MARGIN` | `0.04` | required lead over best other-tool class |
 | `HEARD_FLOOR_DECLINE` | `0.35` | below this (+ unknown agreeing): reject without fallback |
@@ -196,10 +214,10 @@ uv run python scripts/benchmark_latency.py --audio cmd.wav
 
 ## Known limitations
 
-- English-only: Whisper pinned to `language="en"`, prototypes and slot parsers are English. Spanish support is scoped but unbuilt.
-- The bundled Needle checkpoint has an untrained contrastive head — the fast path therefore depends on fastembed (~90MB one-time download). A retrieval-finetuned checkpoint would flip `HEARD_EMBEDDER=needle` back on.
+- Bilingual EN/ES only; more languages need prototypes + a multilingual embedder entry (mechanism exists).
+- The bundled Needle checkpoint has an untrained contrastive head — the fast path therefore depends on fastembed (one-time model download). A retrieval-finetuned checkpoint would flip `HEARD_EMBEDDER=needle` back on.
 - Generative fallback costs seconds (fp32 JAX decode); fine at 5–15% traffic, painful above it.
-- WM tools assume Hyprland; Sway/KDE backends are v1 work.
+- WM tools assume Hyprland; Sway/KDE backends are next.
 
 ---
 
@@ -210,7 +228,7 @@ uv run python scripts/benchmark_latency.py --audio cmd.wav
 | **Daemon** | systemd user unit; optional wake-word alongside push-to-talk |
 | **Responder** | Floating GTK popup + local TTS (piper/espeak-ng) over a unix socket |
 | **Fallback speed** | Schema prefix-cache or GGUF port to take the 6.5s tail to hundreds of ms |
-| **Languages** | Bilingual EN/ES prototypes, multilingual embedder, per-language STT |
+| **Languages** | More languages via the existing prototype + multilingual-embedder mechanism |
 | **Analytics** | Latency + failure event logging, daily rollups, retrain pipeline (failures → finetune data) |
 | **WM backends** | Sway and KDE alongside Hyprland |
 

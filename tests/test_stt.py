@@ -1,5 +1,8 @@
 """STT module tests -- all hardware access is mocked in conftest.py."""
 
+from unittest import mock
+
+import numpy as np
 import pytest
 
 from heard import stt
@@ -78,3 +81,49 @@ class TestFindInputDevices:
         _patch_devices(monkeypatch, [broken, good])
         matched = stt._find_input_devices(KEY_LEFTSHIFT, "KEY_LEFTSHIFT")
         assert [d.name for d in matched] == ["Good"]
+
+
+class TestLanguageConfig:
+    def test_default_language_en(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "none.toml"))
+        from heard import config as cfg
+        cfg._cached_load.cache_clear()
+        try:
+            assert stt._stt_language() == "en"
+        finally:
+            cfg._cached_load.cache_clear()
+
+    def test_language_es_flows_to_transcribe(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "c.toml"))
+        (tmp_path / "c.toml").write_text('language = "es"\n')
+        from heard import config as cfg
+        cfg._cached_load.cache_clear()
+
+        fake = mock.Mock()
+        fake.transcribe.return_value = (iter([]), None)
+        monkeypatch.setattr(stt, "_model", lambda: fake)
+        monkeypatch.setattr(stt, "_speech_bounds", lambda a: (0, len(a)))
+        audio = np.zeros(stt.SAMPLE_RATE, dtype=np.float32)
+
+        try:
+            stt.transcribe(audio)
+            kwargs = fake.transcribe.call_args.kwargs
+            assert kwargs["language"] == "es"
+        finally:
+            cfg._cached_load.cache_clear()
+
+    def test_model_size_from_config(self, monkeypatch, tmp_path):
+        import sys
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "m.toml"))
+        (tmp_path / "m.toml").write_text('stt_model_size = "tiny"\n')
+        from heard import config as cfg
+        cfg._cached_load.cache_clear()
+        stt._model.cache_clear()
+        try:
+            stt._model()
+            args, _ = sys.modules["faster_whisper"].WhisperModel.call_args
+            assert args[0] == "tiny"
+        finally:
+            stt._model.cache_clear()
+            cfg._cached_load.cache_clear()
+

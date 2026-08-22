@@ -120,3 +120,41 @@ class TestClassifierVerdicts:
     def test_verdict_defaults(self):
         v = clf.Verdict()
         assert v.tool_call is None and not v.declined and v.score is None
+
+
+class TestSpanishParsers:
+    @pytest.mark.parametrize("text,expected", [
+        ("pon el volumen al cincuenta por ciento", 50),
+        ("volumen al treinta", 30),
+        ("sube al sesenta y cinco", 65),
+        ("media volumen", 50),
+        ("un cuarto del volumen", 25),
+        ("volumen cien", 100),
+        ("sin números", None),
+    ])
+    def test_percent(self, text, expected):
+        assert clf.extract_percent(text) == expected
+
+    def test_workspace_words(self):
+        assert clf.extract_workspace("ve al espacio de trabajo tres") == "3"
+        assert clf.extract_workspace("espacio de trabajo 4") == "4"
+        assert clf.extract_workspace("cambia al escritorio siete") == "7"
+
+    def test_app_phrase_strips_spanish(self):
+        assert clf.extract_app_phrase("abre la calculadora") == "calculadora"
+        assert clf.extract_app_phrase("ejecuta el spotify por favor") == "spotify"
+
+
+class TestSpanishClassification:
+    def test_volume_up_es(self, classifier):
+        v = classifier.match("sube el volumen")
+        assert v.tool_call == {"name": "volume_control",
+                               "arguments": {"action": "up"}}
+
+    def test_time_es(self, classifier):
+        v = classifier.match("qué hora es")
+        assert v.tool_call["name"] == "system_query"
+
+    def test_off_topic_es_never_dispatches(self, classifier):
+        v = classifier.match("cuéntame un chiste")
+        assert v.tool_call is None

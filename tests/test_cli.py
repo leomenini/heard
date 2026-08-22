@@ -24,16 +24,27 @@ class TestCLI:
         assert "set" in result.output
         assert "show" in result.output
 
-    def test_config_get(self):
-        result = runner.invoke(app, ["config", "get", "wm.backend"])
+    def test_config_get(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "c.toml"))
+        result = runner.invoke(app, ["config", "get", "language"])
         assert result.exit_code == 0
-        assert "wm.backend" in result.output
+        assert "language = en" in result.output
 
-    def test_config_set(self):
-        result = runner.invoke(app, ["config", "set", "wm.backend", "hyprland"])
+    def test_config_set(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "c.toml"))
+        result = runner.invoke(app, ["config", "set", "language", "es"])
         assert result.exit_code == 0
-        assert "wm.backend" in result.output
+        assert "set language = es" in result.output
 
-    def test_config_show(self):
+    def test_config_show(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "c.toml"))
         result = runner.invoke(app, ["config", "show"])
         assert result.exit_code == 0
+        assert "ptt_key" in result.output
+        assert "stt_model_size" in result.output
+
+    def test_config_invalid_key_fails_cleanly(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "c.toml"))
+        result = runner.invoke(app, ["config", "get", "wm.backend"])
+        assert result.exit_code == 1
+        assert "unknown config key" in result.output

@@ -52,6 +52,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "is my battery low",
         "battery level",
         "what's my battery at",
+        "cómo va la batería",
+        "estado de la batería",
+        "cuánta batería me queda",
     ]),
     "system_query:time": ("system_query", {"query": "time"}, [
         "what time is it",
@@ -60,6 +63,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "current time",
         "time check",
         "what time is it right now",
+        "qué hora es",
+        "dime la hora",
+        "hora actual",
     ]),
     "system_query:network": ("system_query", {"query": "network"}, [
         "check the network status",
@@ -69,6 +75,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "do i have internet",
         "connection status",
         "is the wifi working",
+        "estado de la red",
+        "tengo internet",
+        "cómo va la conexión",
     ]),
     "system_query:disk": ("system_query", {"query": "disk"}, [
         "how much disk space is left",
@@ -78,6 +87,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "storage status",
         "free disk space",
         "how much storage do i have",
+        "cuánto espacio hay en el disco",
+        "uso del disco",
+        "espacio libre en disco",
     ]),
     "volume_control:up": ("volume_control", {"action": "up"}, [
         "turn the volume up",
@@ -91,6 +103,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "crank it up",
         "a little higher",
         "make it louder",
+        "sube el volumen",
+        "más volumen",
+        "está muy bajo",
     ]),
     "volume_control:down": ("volume_control", {"action": "down"}, [
         "turn the volume down",
@@ -104,6 +119,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "bring it down",
         "drop the volume",
         "a little lower",
+        "baja el volumen",
+        "menos volumen",
+        "está muy alto",
     ]),
     "volume_control:mute": ("volume_control", {"action": "mute"}, [
         "mute the audio",
@@ -113,6 +131,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "shut it up",
         "mute output",
         "kill the sound",
+        "silencia",
+        "mutear",
+        "quita el sonido",
     ]),
     "volume_control:set": ("volume_control", {"action": "set"}, [
         "set the volume to fifty percent",
@@ -124,6 +145,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "volume twenty",
         "volume to ten",
         "set it to ninety",
+        "pon el volumen al cincuenta por ciento",
+        "volumen al treinta",
+        "ponlo al setenta por ciento",
     ]),
     "media_control:play": ("media_control", {"action": "play"}, [
         "play some music",
@@ -134,6 +158,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "continue playing",
         "unpause",
         "hit play",
+        "reproduce música",
+        "continúa la música",
+        "dale al play",
     ]),
     "media_control:pause": ("media_control", {"action": "pause"}, [
         "pause the playback",
@@ -143,6 +170,8 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "hold on",
         "freeze playback",
         "pause it",
+        "pausa la música",
+        "para la música",
     ]),
     "media_control:next": ("media_control", {"action": "next"}, [
         "skip to the next track",
@@ -152,6 +181,8 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "play the next one",
         "forward",
         "skip forward",
+        "siguiente canción",
+        "pasa de canción",
     ]),
     "media_control:previous": ("media_control", {"action": "previous"}, [
         "go back to the previous song",
@@ -162,6 +193,8 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "skip back",
         "rewind to the last track",
         "the one before",
+        "canción anterior",
+        "vuelve a la anterior",
     ]),
     "launch_app:app": ("launch_app", {}, [
         "open firefox",
@@ -172,6 +205,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "start the terminal",
         "fire up chrome",
         "launch gimp",
+        "abre firefox",
+        "lanza la calculadora",
+        "ejecuta spotify",
     ]),
     "window_action:close": ("window_action", {"action": "close"}, [
         "close this window",
@@ -180,6 +216,8 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "quit this application",
         "kill the window",
         "dismiss this window",
+        "cierra esta ventana",
+        "cierra la ventana",
     ]),
     "window_action:focus": ("window_action", {"action": "focus"}, [],),  # target needed -> always fallback
     "window_action:fullscreen": ("window_action", {"action": "fullscreen"}, [
@@ -188,6 +226,8 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "fullscreen this window",
         "toggle fullscreen",
         "maximize to fullscreen",
+        "pantalla completa",
+        "pon pantalla completa",
     ]),
     "workspace_switch:ws": ("workspace_switch", {}, [
         "go to workspace three",
@@ -196,6 +236,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "workspace two",
         "take me to workspace four",
         "change to workspace seven",
+        "ve al espacio de trabajo tres",
+        "espacio de trabajo dos",
+        "cambia al escritorio cuatro",
     ]),
     "unknown:x": ("__unknown__", {}, [
         "what is the weather tomorrow",
@@ -206,6 +249,9 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "remind me to call mom",
         "how do you make pasta",
         "search for flights to tokyo",
+        "cuéntame un chiste",
+        "qué tiempo hará mañana",
+        "recuérdame llamar a mamá",
     ]),
 }
 
@@ -215,15 +261,27 @@ _NUM_WORDS = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
     "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
     "eleven": 11, "twelve": 12,
+    "cero": 0, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5,
+    "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10,
+    "once": 11, "doce": 12,
 }
 _TENS_WORDS = {
     "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
     "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+    "veinte": 20, "treinta": 30, "cuarenta": 40, "cincuenta": 50,
+    "sesenta": 60, "setenta": 70, "ochenta": 80, "noventa": 90,
 }
-_FILLER_WORDS = {"the", "a", "an", "to", "please", "now"}
+_HUNDRED_WORDS = {"hundred": 100, "cien": 100}
+_SPECIAL_NUMBERS = {"half": 50, "media": 50, "quarter": 25, "cuarto": 25}
+_FILLER_WORDS = {"the", "a", "an", "to", "please", "now",
+                 "el", "la", "los", "las", "un", "una", "al", "del",
+                 "por", "favor", "ya"}
 _LEADING_VERBS = {
     "open", "launch", "start", "run", "fire", "bring", "up", "switch",
     "go", "jump", "take", "me", "change", "set", "put",
+    "abre", "abrir", "lanza", "lanzar", "ejecuta", "ejecutar", "inicia",
+    "iniciar", "arranca", "arrancar", "muestra", "pon", "poner", "ponlo",
+    "cambia", "cambiar", "ve", "salta", "pasa", "dale",
 }
 
 
@@ -240,8 +298,8 @@ def _strip_leading_verbs(text: str) -> str:
 
 
 def parse_spoken_number(text: str) -> int | None:
-    """Extract the last spoken number: digits, number words, 'half', 'quarter'."""
-    tokens = text.lower().replace("-", " ").split()
+    """Extract the last spoken number (EN/ES): digits, words, half/quarter."""
+    tokens = [t for t in text.lower().replace("-", " ").split() if t != "y"]
     best = None
     i = 0
     while i < len(tokens):
@@ -249,8 +307,8 @@ def parse_spoken_number(text: str) -> int | None:
         val = None
         if tok in _NUM_WORDS:
             val = _NUM_WORDS[tok]
-            if i + 1 < len(tokens) and tokens[i + 1] == "hundred":
-                val *= 100
+            if i + 1 < len(tokens) and tokens[i + 1] in _HUNDRED_WORDS:
+                val *= _HUNDRED_WORDS[tokens[i + 1]]
                 i += 1
                 nxt = tokens[i + 1] if i + 1 < len(tokens) else None
                 if nxt in _TENS_WORDS:
@@ -267,10 +325,10 @@ def parse_spoken_number(text: str) -> int | None:
             if i + 1 < len(tokens) and tokens[i + 1] in _NUM_WORDS and _NUM_WORDS[tokens[i + 1]] < 10:
                 val += _NUM_WORDS[tokens[i + 1]]
                 i += 1
-        elif tok == "half":
-            val = 50
-        elif tok == "quarter":
-            val = 25
+        elif tok in _HUNDRED_WORDS:
+            val = _HUNDRED_WORDS[tok]
+        elif tok in _SPECIAL_NUMBERS:
+            val = _SPECIAL_NUMBERS[tok]
         if val is not None:
             best = val
         i += 1
@@ -278,8 +336,8 @@ def parse_spoken_number(text: str) -> int | None:
 
 
 def extract_percent(text: str) -> int | None:
-    """Pull a volume percentage out of the transcript ('50', '50 percent', 'fifty')."""
-    m = re.search(r"\b(\d{1,3})\s*(?:%|percent|pc)\b", text)
+    """Pull a volume percentage out of the transcript ('50', 'fifty', 'media')."""
+    m = re.search(r"\b(\d{1,3})\s*(?:%|percent|pc|por\s+ciento|porcentaje)\b", text)
     if m:
         n = int(m.group(1))
         return n if 0 <= n <= 100 else None
@@ -290,6 +348,17 @@ def extract_percent(text: str) -> int | None:
     if m:
         n = int(m.group(1))
         return n if 0 <= n <= 100 else None
+    return None
+
+
+def extract_workspace(text: str) -> str | None:
+    """Pull a workspace number out of the transcript."""
+    m = re.search(r"\b(?:workspace|espacio\s+de\s+trabajo|escritorio)?\s*(\d{1,2})\b", text)
+    if m and m.group(1):
+        return m.group(1)
+    for tok in text.lower().replace("-", " ").split():
+        if tok in _NUM_WORDS:
+            return str(_NUM_WORDS[tok])
     return None
 
 

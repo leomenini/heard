@@ -31,16 +31,17 @@ def _exec_binary(exec_line: str) -> str | None:
     return None
 
 
-def _parse_desktop_entry(path: Path) -> tuple[str, str] | None:
+def _parse_desktop_entry(path: Path) -> list[tuple[str, str]]:
+    """(display key, binary) pairs: Name, GenericName, and localized Names."""
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return None
+        return []
 
     section = None
-    name = None
     exec_token = None
     hidden = False
+    names: list[str] = []
 
     for line in text.splitlines():
         line = line.strip()
@@ -55,35 +56,35 @@ def _parse_desktop_entry(path: Path) -> tuple[str, str] | None:
         if not sep:
             continue
         key, value = key.strip(), value.strip()
-        if key == "Name":
-            name = value
-        elif key == "Exec":
+        if key == "Exec":
             exec_token = value
+        elif key == "Name" or key.startswith("Name["):
+            if value:
+                names.append(value)
+        elif key == "GenericName" and value:
+            names.append(value)
         elif key in ("Hidden", "NoDisplay") and value.lower() == "true":
             hidden = True
 
     if hidden or exec_token is None:
-        return None
+        return []
     binary = _exec_binary(exec_token)
     if binary is None:
-        return None
-    return (name or binary), binary
+        return []
+    names.append(binary)
+    return [(n.lower(), binary) for n in dict.fromkeys(names)]
 
 
 @lru_cache(maxsize=1)
 def installed_apps() -> dict[str, str]:
-    """Map lowercase display names and binary names to runnable binaries."""
+    """Map lowercase display names (incl. localized) and binaries to binaries."""
     apps: dict[str, str] = {}
     for d in _desktop_dirs():
         if not d.is_dir():
             continue
         for path in sorted(d.glob("*.desktop")):
-            parsed = _parse_desktop_entry(path)
-            if parsed is None:
-                continue
-            display, binary = parsed
-            apps.setdefault(display.lower(), binary)
-            apps.setdefault(binary.lower(), binary)
+            for name, binary in _parse_desktop_entry(path):
+                apps.setdefault(name, binary)
     return apps
 
 
