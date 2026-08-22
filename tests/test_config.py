@@ -70,3 +70,8 @@ class TestCpuThreads:
         config.set_key("stt_cpu_threads", "2")
         config._cached_load.cache_clear()
         assert config.get("stt_cpu_threads") == "2"
+
+    def test_checkpoint_roundtrip(self, isolated_config):
+        config.set_key("checkpoint", "checkpoints/needle_head_finetuned.pkl")
+        config._cached_load.cache_clear()
+        assert config.get("checkpoint") == "checkpoints/needle_head_finetuned.pkl"

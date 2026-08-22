@@ -121,6 +121,17 @@ class TestClassifierVerdicts:
         v = clf.Verdict()
         assert v.tool_call is None and not v.declined and v.score is None
 
+    def test_backend_specific_accept_score(self, classifier):
+        # A backend can attach a higher accept threshold to its encode callable.
+        def wrapped(texts):
+            return classifier._encode(texts)
+
+        wrapped.accept_score = 1.0  # impossible to reach
+        strict = clf.Classifier(wrapped)
+        v = strict.match("how's my battery")
+        assert v.tool_call is None   # not accepted
+        assert not v.declined        # not confidently unknown either -> fallback
+
 
 class TestSpanishParsers:
     @pytest.mark.parametrize("text,expected", [

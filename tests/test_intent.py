@@ -1,5 +1,16 @@
 """Intent module tests -- Needle is mocked in conftest.py."""
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clear_config_cache():
+    from heard import config
+
+    config._cached_load.cache_clear()
+    yield
+    config._cached_load.cache_clear()
+
 
 class TestIntent:
     def test_module_imports(self):
@@ -48,6 +59,40 @@ class TestCheckpointResolution:
         target.write_bytes(b"x")
         monkeypatch.setenv("HEARD_CHECKPOINT", str(target))
         assert intent._checkpoint_file() == str(target)
+
+    def test_config_checkpoint_wins_over_default(self, tmp_path, monkeypatch):
+        from heard import config
+
+        monkeypatch.chdir(tmp_path)
+        cfg = tmp_path / "heard.toml"
+        monkeypatch.setenv("HEARD_CONFIG", str(cfg))
+        target = tmp_path / "custom.pkl"
+        target.write_bytes(b"x")
+        cfg.write_text(f'checkpoint = "{target}"\n')
+        config._cached_load.cache_clear()
+
+        from heard import intent
+
+        monkeypatch.delenv("HEARD_CHECKPOINT", raising=False)
+        assert intent._checkpoint_file() == str(target)
+
+    def test_env_wins_over_config_checkpoint(self, tmp_path, monkeypatch):
+        from heard import config
+
+        monkeypatch.chdir(tmp_path)
+        cfg = tmp_path / "heard.toml"
+        monkeypatch.setenv("HEARD_CONFIG", str(cfg))
+        env_target = tmp_path / "env.pkl"
+        env_target.write_bytes(b"x")
+        cfg_target = tmp_path / "cfg.pkl"
+        cfg_target.write_bytes(b"x")
+        cfg.write_text(f'checkpoint = "{cfg_target}"\n')
+        config._cached_load.cache_clear()
+        monkeypatch.setenv("HEARD_CHECKPOINT", str(env_target))
+
+        from heard import intent
+
+        assert intent._checkpoint_file() == str(env_target)
 
     def test_glob_fallback(self, tmp_path, monkeypatch):
         from heard import intent

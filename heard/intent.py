@@ -23,11 +23,21 @@ CHECKPOINT_PATH = "checkpoints/needle_checkpoint.pkl"
 
 
 def _checkpoint_file() -> str:
-    """Resolve the Needle weights: $HEARD_CHECKPOINT, default path, then any
-    *.pkl in checkpoints/. Raises with instructions when nothing is found."""
+    """Resolve the Needle weights: $HEARD_CHECKPOINT, config checkpoint,
+    default path, then any *.pkl in checkpoints/. Raises with instructions
+    when nothing is found."""
     candidates: list[str] = []
-    if env := os.environ.get("HEARD_CHECKPOINT"):
-        candidates.append(env)
+    env_ckpt = os.environ.get("HEARD_CHECKPOINT")
+    if env_ckpt:
+        candidates.append(env_ckpt)
+    try:
+        from . import config
+
+        cfg_ckpt = str(config.cached("checkpoint") or "")
+        if cfg_ckpt:
+            candidates.append(cfg_ckpt)
+    except Exception:
+        cfg_ckpt = ""
     candidates.append(CHECKPOINT_PATH)
     ckpt_dir = Path("checkpoints")
     if ckpt_dir.is_dir():
@@ -37,10 +47,13 @@ def _checkpoint_file() -> str:
             return c
     raise RuntimeError(
         "Needle checkpoint not found.\n"
-        f"Looked for: {CHECKPOINT_PATH} and any *.pkl in checkpoints/"
-        + (f", plus $HEARD_CHECKPOINT ({env})" if env else "")
-        + "\nDrop the finetuned weights into checkpoints/ or set:\n"
-        "  export HEARD_CHECKPOINT=/path/to/needle_checkpoint.pkl"
+        f"Looked for: {CHECKPOINT_PATH}, any *.pkl in checkpoints/, "
+        f"config 'checkpoint' ({cfg_ckpt or 'not set'}), "
+        f"and $HEARD_CHECKPOINT ({env_ckpt or 'not set'})"
+        "\nDrop the finetuned weights into checkpoints/ or set:\n"
+        "  heard config set checkpoint checkpoints/needle_head_finetuned.pkl\n"
+        "or:\n"
+        "  export HEARD_CHECKPOINT=checkpoints/needle_head_finetuned.pkl"
     )
 
 
@@ -70,7 +83,13 @@ def _tools_json() -> str:
 @lru_cache(maxsize=1)
 def _encoder():
     """Embedding backend for the fast path (needle or fastembed MiniLM)."""
-    return resolve_encoder(needle_triple=_model())
+    encode = resolve_encoder(needle_triple=_model())
+    # Copy any backend-specific thresholds to the stable _encode function so
+    # the classifier picks them up regardless of caching wrappers.
+    for name in ("accept_score", "margin", "floor_decline"):
+        if hasattr(encode, name):
+            setattr(_encode, name, getattr(encode, name))
+    return encode
 
 
 def _encode(texts: list[str]) -> np.ndarray:

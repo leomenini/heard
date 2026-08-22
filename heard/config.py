@@ -15,6 +15,7 @@ import tomli_w
 DEFAULTS: dict[str, str | bool] = {
     "language": "en",            # en | es
     "ptt_key": "KEY_LEFTSHIFT",
+    "checkpoint": "",            # empty = checkpoints/needle_checkpoint.pkl
     "embedder_model": "",        # empty = auto per language
     "stt_model_size": "base",    # tiny | base | small
     "stt_cpu_threads": "",       # empty = ctranslate2 default; try 2 on hybrid CPUs

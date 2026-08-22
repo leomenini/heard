@@ -27,6 +27,18 @@ FLOOR_DECLINE = float(os.environ.get("HEARD_FLOOR_DECLINE", "0.35"))
 ACCEPT_SCORE = float(os.environ.get("HEARD_ACCEPT_SCORE", "0.55"))
 MARGIN = float(os.environ.get("HEARD_MARGIN", "0.04"))
 
+
+def _threshold(encode, name: str) -> float:
+    """Allow the embedder backend to suggest a backend-specific threshold.
+
+    The encode callable may carry attributes like ``accept_score`` or
+    ``margin`` that override the global defaults (e.g. needle's tuned
+    contrastive head needs a higher acceptance floor than fastembed).
+    """
+    default = globals()[name.upper()]
+    return getattr(encode, name, default)
+
+
 # launch_app corroboration: app nouns scatter in embedding space, so a strict
 # dictionary hit against installed .desktop entries lets an utterance clear a
 # lower bar than ACCEPT_SCORE -- but only when the best class is launch_app.
@@ -440,11 +452,15 @@ class Classifier:
         runner = next(((k, s) for k, s in ranked[1:] if self._tool_of[k] != tool),
                       None)
 
+        floor_decline = _threshold(self._encode, "floor_decline")
+        margin = _threshold(self._encode, "margin")
+        accept_score = _threshold(self._encode, "accept_score")
+
         unknown_score = next((s for k, s in ranked if k == "unknown:x"), -1.0)
-        if best_score < FLOOR_DECLINE and unknown_score >= FLOOR_DECLINE:
+        if best_score < floor_decline and unknown_score >= floor_decline:
             return Verdict(tool_call=None, declined=True,
                            score=best_score, runner_up=("unknown:x", unknown_score))
-        if unknown_score >= best_score + MARGIN:
+        if unknown_score >= best_score + margin:
             return Verdict(tool_call=None, declined=True,
                            score=best_score, runner_up=("unknown:x", unknown_score))
         if tool == "__unknown__":
@@ -453,8 +469,8 @@ class Classifier:
         if best_key in FALLBACK_CLASSES:
             return Verdict(score=best_score, runner_up=runner)  # needs generated slots
 
-        margin_ok = runner is None or best_score - runner[1] >= MARGIN
-        strong = best_score >= ACCEPT_SCORE and margin_ok
+        margin_ok = runner is None or best_score - runner[1] >= margin
+        strong = best_score >= accept_score and margin_ok
         corroborated = (
             best_key == "launch_app:app"
             and best_score >= DICT_FLOOR

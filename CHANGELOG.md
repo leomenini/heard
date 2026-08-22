@@ -9,6 +9,9 @@ commands, in English or Spanish.
 **Fast path**
 - Embedding nearest-centroid classifier over ~150 bilingual prototypes
   (17 tool-action classes + explicit unknown centroid for rejection)
+- Finetuned Needle contrastive head (`scripts/train_needle_head.py`) so
+  `HEARD_EMBEDDER=needle` runs the fast path without the fastembed ONNX
+  dependency; JIT'd fixed-shape encoder + backend-specific threshold
 - Slot resolution by lookup, not generation: spoken numbers EN/ES,
   percent phrases, `.desktop` fuzzy app matching (all locales indexed)
 - Dictionary-corroborated launch gate; cosine thresholds env-tunable

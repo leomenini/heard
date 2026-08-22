@@ -42,8 +42,66 @@ def degenerate(embs) -> bool:
     return float(np.abs(arr).max()) < 1e-6
 
 
+# --- fast jitted needle encode ---------------------------------------------
+NEEDLE_MAX_TOKENS = 32
+_fast_encode_cache: dict = {}
+
+
+def pad_token_ids(texts: list[str], tokenizer,
+                  max_tokens: int = NEEDLE_MAX_TOKENS) -> np.ndarray:
+    """(B, max_tokens) int32 matrix, left-aligned, padded with pad_token_id."""
+    pad = getattr(tokenizer, "pad_token_id", None)
+    if pad is None:
+        pad = tokenizer.eos_token_id
+    rows = []
+    for text in texts:
+        ids = list(tokenizer.encode(text))[:max_tokens]
+        ids += [pad] * (max_tokens - len(ids))
+        rows.append(ids)
+    return np.array(rows, dtype=np.int32)
+
+
+def fast_encode(model, params, tokenizer, texts: list[str]) -> np.ndarray:
+    """JIT'd encode_contrastive; L2-normalized (B, 128).
+
+    Compiled per exact batch size so runtime queries (almost always B=1)
+    don't pay the FLOPs of a larger padded batch, and padded positions use
+    the tokenizer's pad id so encode_contrastive's internal mask ignores them.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    n = len(texts)
+    if n == 0:
+        return np.empty((0, 128), dtype=np.float32)
+
+    key = (id(model), n)
+    if key not in _fast_encode_cache:
+        def forward(src):
+            # encode_contrastive builds its own padding mask from pad ids
+            return model.apply({"params": params}, src,
+                               deterministic=True,
+                               method="encode_contrastive")
+
+        _fast_encode_cache[key] = {
+            "fn": jax.jit(forward),
+            "pad": lambda t: pad_token_ids(t, tokenizer),
+        }
+    entry = _fast_encode_cache[key]
+
+    rows = entry["pad"](texts)
+    out = np.asarray(entry["fn"](jnp.array(rows)), dtype=np.float32)
+    norms = np.linalg.norm(out, axis=1, keepdims=True)
+    return out / np.maximum(norms, 1e-12)
+
+
 class NeedleEmbedder:
-    """encode_for_retrieval over the already-loaded generative weights."""
+    """encode_for_retrieval over the already-loaded generative weights.
+
+    Uses a JIT-compiled, fixed-shape forward (queries padded to
+    NEEDLE_MAX_TOKENS): eager JAX dispatch costs >1s per query on CPU,
+    the compiled path single-digit ms.
+    """
 
     name = "needle"
 
@@ -51,10 +109,8 @@ class NeedleEmbedder:
         self._model, self._params, self._tok = model, params, tokenizer
 
     def encode(self, texts: list[str]) -> np.ndarray:
-        from needle import encode_for_retrieval
-
-        return encode_for_retrieval(self._model, self._params, self._tok,
-                                    list(texts))
+        return fast_encode(self._model, self._params, self._tok,
+                           list(texts))
 
 
 class FastEmbedder:
@@ -92,10 +148,16 @@ def resolve_encoder(needle_triple=None):
 
     if mode in ("auto", "needle") and needle_triple is not None:
         emb = NeedleEmbedder(*needle_triple)
-        if mode == "needle":
-            return emb.encode
-        if not degenerate(_probe(emb.encode)):
-            return emb.encode
+
+        def encode(texts):
+            return emb.encode(texts)
+
+        if not degenerate(_probe(encode)):
+            # Tuned on scripts/benchmark_latency.py fast-path probe:
+            # needle's finetuned head is high-confidence but can over-accept
+            # off-topic queries, so it needs a higher floor than fastembed.
+            encode.accept_score = 0.85
+            return encode
         if mode == "needle":
             raise RuntimeError(
                 "HEARD_EMBEDDER=needle but this checkpoint's contrastive head "
