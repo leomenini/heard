@@ -1,4 +1,5 @@
 import json
+from unittest import mock
 
 from heard.tools.registry import REGISTRY, dispatch, validate, known_tools
 from heard.tools.types import Ok, Rejected, Failed, ParamSpec
@@ -126,7 +127,8 @@ class TestDispatch:
         assert isinstance(r, Rejected)
         assert r.kind == "invalid_value"
 
-    def test_valid_volume_up(self):
+    @mock.patch("heard.tools.volume.subprocess.run")
+    def test_valid_volume_up(self, mock_run):
         r = dispatch({"name": "volume_control", "arguments": {"action": "up"}})
         assert isinstance(r, Ok)
         assert r.tool == "volume_control"
@@ -136,7 +138,8 @@ class TestDispatch:
         assert isinstance(r, Ok)
         assert r.tool == "system_query"
 
-    def test_valid_workspace_switch(self):
+    @mock.patch("heard.tools.workspace.subprocess.run")
+    def test_valid_workspace_switch(self, mock_run):
         r = dispatch({"name": "workspace_switch", "arguments": {"workspace": "3"}})
         assert isinstance(r, Ok)
 
