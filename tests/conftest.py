@@ -13,7 +13,8 @@ for mod_name in ("evdev", "sounddevice", "faster_whisper", "needle"):
     sys.modules[mod_name] = mock.MagicMock()
 
 # Give ecodes realistic behavior: known keys resolve to ints, unknown raise
-ecodes = mock.Mock(spec_set=["KEY_LEFTSHIFT", "KEY_LEFTCONTROL", "KEY_ESC"])
+ecodes = mock.Mock(spec_set=["EV_KEY", "KEY_LEFTSHIFT", "KEY_LEFTCONTROL", "KEY_ESC"])
+ecodes.EV_KEY = 1
 ecodes.KEY_LEFTSHIFT = 42
 ecodes.KEY_LEFTCONTROL = 29
 ecodes.KEY_ESC = 1
