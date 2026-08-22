@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 — Unreleased
+
+**GNOME support**
+- Added `gnome` to the window-manager abstraction.
+- Detects GNOME via `XDG_CURRENT_DESKTOP` / `DESKTOP_SESSION` or config
+  `wm_backend = "gnome"`.
+- Window listing, focus, close active, fullscreen toggle, and workspace switch
+  are implemented through GNOME Shell's D-Bus `Eval` interface.
+
 ## 1.2.0 — Unreleased
 
 **Screen recording**

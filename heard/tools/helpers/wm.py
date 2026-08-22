@@ -1,8 +1,8 @@
-"""Window-manager abstraction: Hyprland, Sway, and KDE.
+"""Window-manager abstraction: Hyprland, Sway, KDE, and GNOME.
 
 Detection order: config `wm_backend` override, then environment
-(HYPRLAND_INSTANCE_SIGNATURE / SWAYSOCK / KDE markers). Every command raises
-on failure -- handlers translate that into Failed/Rejected results.
+(HYPRLAND_INSTANCE_SIGNATURE / SWAYSOCK / KDE / GNOME markers). Every command
+raises on failure -- handlers translate that into Failed/Rejected results.
 """
 
 import json
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from jeepney import DBusAddress, new_method_call
 
-BACKENDS = ("hyprland", "sway", "kde")
+BACKENDS = ("hyprland", "sway", "kde", "gnome")
 _DBUS_TIMEOUT_S = 2.0
 
 
@@ -47,6 +47,10 @@ def detect() -> str | None:
     if (os.environ.get("KDE_FULL_SESSION", "").lower() == "true"
             or "kde" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower()):
         return "kde"
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    session = os.environ.get("DESKTOP_SESSION", "").lower()
+    if "gnome" in desktop or "gnome" in session:
+        return "gnome"
     return None
 
 
@@ -55,7 +59,7 @@ def require() -> str:
     if backend is None:
         raise RuntimeError(
             "no supported window manager detected "
-            "(tried Hyprland, Sway, KDE); set wm_backend in config to override"
+            "(tried Hyprland, Sway, KDE, GNOME); set wm_backend in config to override"
         )
     return backend
 
@@ -100,6 +104,48 @@ def _sway_list() -> list[Window]:
     windows: list[Window] = []
     if isinstance(tree, dict):
         _sway_walk(tree, windows)
+    return windows
+
+
+# --- GNOME -----------------------------------------------------------------
+
+_GNOME_SHELL = DBusAddress("/org/gnome/Shell", bus_name="org.gnome.Shell",
+                           interface="org.gnome.Shell")
+
+
+def _gnome_eval(js: str) -> str:
+    """Run JS inside GNOME Shell via D-Bus Eval; return its string result."""
+    from jeepney.io.blocking import open_dbus_connection
+
+    try:
+        from .. import media
+
+        conn = media._connection()
+    except Exception:
+        conn = open_dbus_connection()
+    reply = conn.send_message(new_method_call(_GNOME_SHELL, "Eval", "s", (js,)),
+                              timeout=_DBUS_TIMEOUT_S)
+    if reply is None or reply.message_type == 4:  # error
+        raise RuntimeError("gnome shell eval failed")
+    success, result = reply.body
+    if not success:
+        raise RuntimeError(f"gnome shell eval error: {result}")
+    return result
+
+
+def _gnome_list() -> list[Window]:
+    js = (
+        "JSON.stringify(global.get_window_actors().map(a => ({"
+        "id: a.meta_window.get_id(),"
+        "cls: a.meta_window.get_wm_class() || '',"
+        "title: a.meta_window.get_title() || ''"
+        "})))"
+    )
+    out = _gnome_eval(js)
+    windows = []
+    for item in json.loads(out) if out.strip() else []:
+        windows.append(Window(str(item["id"]), str(item.get("cls", "")),
+                              str(item.get("title", ""))))
     return windows
 
 
@@ -170,6 +216,8 @@ def list_windows() -> list[Window]:
         return _hyprland_list()
     if backend == "sway":
         return _sway_list()
+    if backend == "gnome":
+        return _gnome_list()
     return _kde_list()
 
 
@@ -179,6 +227,8 @@ def close_active() -> None:
         _run(["hyprctl", "dispatch", "closewindow", "active"])
     elif backend == "sway":
         _run(["swaymsg", "kill"])
+    elif backend == "gnome":
+        _gnome_eval("global.display.focus_window.delete(0); 'done'")
     else:
         active = _kde_kdotool("getactivewindow")
         _kde_kdotool("windowclose", active)
@@ -190,6 +240,11 @@ def toggle_fullscreen() -> None:
         _run(["hyprctl", "dispatch", "fullscreen", "1"])
     elif backend == "sway":
         _run(["swaymsg", "fullscreen", "toggle"])
+    elif backend == "gnome":
+        _gnome_eval(
+            "let w = global.display.focus_window;"
+            "w.fullscreen ? w.unfullscreen() : w.fullscreen(); 'done'"
+        )
     else:
         raise NotImplementedError(
             "fullscreen toggling is not supported on KDE yet")
@@ -201,6 +256,12 @@ def focus_address(address: str) -> None:
         _run(["hyprctl", "dispatch", "focuswindow", address])
     elif backend == "sway":
         _run(["swaymsg", f"[con_id={address}]", "focus"])
+    elif backend == "gnome":
+        _gnome_eval(
+            f"let wins = global.get_window_actors().map(a => a.meta_window);"
+            f"let w = wins.find(w => w.get_id() === {address});"
+            f"if (w) w.activate(0); 'done'"
+        )
     else:
         _kde_kdotool("windowactivate", address)
 
@@ -226,5 +287,10 @@ def switch_workspace(n: int) -> None:
         _run(["hyprctl", "dispatch", "workspace", str(n)])
     elif backend == "sway":
         _run(["swaymsg", "workspace", "number", str(n)])
+    elif backend == "gnome":
+        _gnome_eval(
+            f"global.workspace_manager.get_workspace_by_index({n - 1}).activate(0);"
+            f" 'done'"
+        )
     else:
         _kwin_run_script(f"workspace.currentDesktop = {n};")

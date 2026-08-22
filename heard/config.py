@@ -31,7 +31,7 @@ DEFAULTS: dict[str, str | bool] = {
 }
 
 VALID_LANGUAGE = ("en", "es")
-VALID_WM_BACKEND = ("auto", "hyprland", "sway", "kde")
+VALID_WM_BACKEND = ("auto", "hyprland", "sway", "kde", "gnome")
 
 
 def config_path() -> Path:

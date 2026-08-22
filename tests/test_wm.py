@@ -137,6 +137,56 @@ class TestFocusByToken:
             wm.focus_by_token("nothing-here")
 
 
+class TestGnome:
+    def test_detect_from_desktop(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "c.toml"))
+        from heard import config as cfg
+        cfg._cached_load.cache_clear()
+        try:
+            monkeypatch.delenv("HYPRLAND_INSTANCE_SIGNATURE", raising=False)
+            monkeypatch.delenv("SWAYSOCK", raising=False)
+            monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME")
+            assert wm.detect() == "gnome"
+        finally:
+            cfg._cached_load.cache_clear()
+
+    def test_list_parses_eval_json(self, monkeypatch):
+        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "gnome")
+        payload = json.dumps([
+            {"id": 42, "cls": "firefox", "title": "Mozilla Firefox"},
+        ])
+        with mock.patch("heard.tools.helpers.wm._gnome_eval", return_value=payload):
+            windows = wm.list_windows()
+        assert windows == [Window("42", "firefox", "Mozilla Firefox")]
+
+    def test_close_active_eval(self, monkeypatch):
+        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "gnome")
+        with mock.patch("heard.tools.helpers.wm._gnome_eval") as ev:
+            wm.close_active()
+        assert "delete(0)" in ev.call_args[0][0]
+
+    def test_toggle_fullscreen_eval(self, monkeypatch):
+        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "gnome")
+        with mock.patch("heard.tools.helpers.wm._gnome_eval") as ev:
+            wm.toggle_fullscreen()
+        js = ev.call_args[0][0]
+        assert "fullscreen" in js
+
+    def test_focus_address_eval(self, monkeypatch):
+        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "gnome")
+        with mock.patch("heard.tools.helpers.wm._gnome_eval") as ev:
+            wm.focus_address("42")
+        js = ev.call_args[0][0]
+        assert "w.get_id() === 42" in js
+
+    def test_switch_workspace_eval(self, monkeypatch):
+        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "gnome")
+        with mock.patch("heard.tools.helpers.wm._gnome_eval") as ev:
+            wm.switch_workspace(3)
+        js = ev.call_args[0][0]
+        assert "get_workspace_by_index(2)" in js
+
+
 class TestWindowLabel:
     def test_label_combines_class_and_title(self):
         assert Window("1", "Foot", "Terminal").label() == "foot terminal"
