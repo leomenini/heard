@@ -21,6 +21,10 @@ DEFAULTS: dict[str, str | bool] = {
     "stt_cpu_threads": "",       # empty = ctranslate2 default; try 2 on hybrid CPUs
     "wm_backend": "auto",        # auto | hyprland | sway | kde
     "events": True,              # append local JSONL usage log
+    "llm_url": "",               # OpenAI-compatible chat completions endpoint
+    "llm_api_key": "",           # Bearer token for llm_url
+    "llm_model": "",             # e.g. gpt-4o-mini; required by most endpoints
+    "tts_enabled": True,         # speak LLM answers out loud
 }
 
 VALID_LANGUAGE = ("en", "es")

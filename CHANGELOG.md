@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0 — Unreleased
+
+**Query mode**
+- Transcripts starting with "Question" or "Pregunta" are sent to a configured
+  OpenAI-compatible LLM (`llm_url`, `llm_api_key`, `llm_model`) and the answer
+  is spoken out loud via TTS (`language` and `tts_enabled` config keys).
+- TTS uses `gTTS` by default (en/es), with local `flite` fallback for English
+  and console fallback if no player is available; playback runs in a background
+  thread so the daemon stays responsive.
+
+**Microphone control**
+- New `microphone_control` tool: `mute` / `unmute` the default microphone source
+  via `wpctl @DEFAULT_AUDIO_SOURCE@`.
+
+**Config**
+- New keys: `llm_url`, `llm_api_key`, `llm_model`, `tts_enabled`.
+
 ## 1.0.0 — 2026-08-22
 
 First complete release: capture → resolve → dispatch runs end-to-end on

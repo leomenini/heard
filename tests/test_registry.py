@@ -6,14 +6,14 @@ from heard.tools.types import Ok, ParamSpec, Rejected
 
 
 class TestREGISTRY:
-    def test_has_six_tools(self):
-        assert len(REGISTRY) == 6
+    def test_has_seven_tools(self):
+        assert len(REGISTRY) == 7
 
     def test_all_tool_names(self):
         names = set(REGISTRY.keys())
         assert names == {
-            "system_query", "volume_control", "media_control",
-            "launch_app", "window_action", "workspace_switch",
+            "system_query", "volume_control", "microphone_control",
+            "media_control", "launch_app", "window_action", "workspace_switch",
         }
 
     def test_every_entry_is_entry(self):
@@ -36,9 +36,9 @@ class TestREGISTRY:
 
 
 class TestKnownTools:
-    def test_returns_six_tools(self):
+    def test_returns_seven_tools(self):
         tools = known_tools()
-        assert len(tools) == 6
+        assert len(tools) == 7
 
     def test_schema_matches_registry(self):
         tools = known_tools()
@@ -133,6 +133,12 @@ class TestDispatch:
         r = dispatch({"name": "volume_control", "arguments": {"action": "up"}})
         assert isinstance(r, Ok)
         assert r.tool == "volume_control"
+
+    @mock.patch("heard.tools.microphone.subprocess.run")
+    def test_valid_microphone_mute(self, mock_run):
+        r = dispatch({"name": "microphone_control", "arguments": {"action": "mute"}})
+        assert isinstance(r, Ok)
+        assert r.tool == "microphone_control"
 
     def test_valid_system_query_battery(self):
         r = dispatch({"name": "system_query", "arguments": {"query": "battery"}})

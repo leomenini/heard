@@ -1,5 +1,6 @@
 from .apps import launch_app
 from .media import media_control
+from .microphone import microphone_control
 from .system_query import system_query
 from .types import Entry, Failed, ParamSpec, Rejected, Result
 from .volume import volume_control
@@ -29,6 +30,16 @@ REGISTRY: dict[str, Entry] = {
                 enum=frozenset({"up", "down", "mute", "unmute", "set"}),
             ),
             "amount": ParamSpec(required=False),
+        },
+    ),
+    "microphone_control": Entry(
+        fn=microphone_control,
+        description="Mute or unmute the default microphone.",
+        params={
+            "action": ParamSpec(
+                required=True,
+                enum=frozenset({"mute", "unmute"}),
+            ),
         },
     ),
     "media_control": Entry(

@@ -90,7 +90,25 @@ def listen():
 
     def handle(cap):
         """Resolve + dispatch + log; shared by PTT key and IPC bindings."""
+        from . import events, llm_query
+
         print(f"  you: {cap.text}", flush=True)
+
+        is_q, prompt = llm_query.is_query(cap.text)
+        if is_q:
+            answer = llm_query.query(prompt)
+            print(f"  heard: {answer}", flush=True)
+            llm_query.speak(answer)
+            events.log_event(
+                "query",
+                transcript=cap.text,
+                prompt=prompt,
+                response=answer[:500],
+                hold_ms=round(cap.hold_ms, 1),
+                tail_ms=round(cap.tail_ms, 1),
+            )
+            return
+
         resolution = intent.resolve(cap.text)
         if resolution.tool_call:
             # feedback lands before dispatch; perceived latency is intent latency

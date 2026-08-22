@@ -18,6 +18,10 @@ class TestConfigLoad:
         assert cfg["language"] == "en"
         assert cfg["ptt_key"] == "KEY_LEFTSHIFT"
         assert cfg["events"] is True
+        assert cfg["llm_url"] == ""
+        assert cfg["llm_api_key"] == ""
+        assert cfg["llm_model"] == ""
+        assert cfg["tts_enabled"] is True
 
     def test_unknown_keys_ignored(self, isolated_config):
         isolated_config.write_text('language = "es"\nbogus = 1\n')
