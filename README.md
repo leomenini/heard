@@ -7,40 +7,88 @@
 [![Arch](https://img.shields.io/badge/Target-Arch%20Linux-1793D1?logo=archlinux&logoColor=white&style=for-the-badge)]()
 [![CI](https://img.shields.io/github/actions/workflow/status/anomalyco/heard/test.yml?style=for-the-badge&logo=github)]()
 
-hear + d. It's the joke `sshd` would make if it could. Reads as an English word, is exactly what the daemon does, and `heard: launching spotify` in a log line is funny. 
+hear + d. It's the joke `sshd` would make if it could. Reads as an English word, is exactly what the daemon does, and `heard: launching spotify` in a log line is funny.
 
-> **WIP.** v0.1 is a foreground blocking loop that is **still being built**. This readme represents the v0.1 final state. Kill with Ctrl-C. Daemonization arrives in v1.
+> **WIP.** v0.1 is a foreground blocking loop: run `uv run heard listen`, hold Shift, speak, release, Ctrl-C to stop. Daemonization arrives in v1.
+
 ---
 
 ## Quick start
 
 ```bash
-uv run heard.cli listen
+uv sync                          # one-time: deps + tokenizer/model downloads
+uv run heard listen
 ```
 
-Hold the Shift key, speak, release. That is the v0.1 loop:
+If `/dev/input` permission errors appear (fresh group memberships need a new session):
 
-1. Hold left Shift — evdev captures key state (no X11/Wayland dependency)
-2. Release triggers capture via sounddevice, transcription via Whisper (on-device)
-3. Resolve intent via Needle (26M parameter function-call model)
-4. Dispatch to the matching tool handler (launch, media, volume, window, workspace, system query)
-5. Print result to stdout
+```bash
+sg input -c 'uv run heard listen'    # or log out and back in after `usermod -aG input $USER`
+```
 
-6 tools, all local, no network, no daemonization. Needle inference runs in 3.5–5.5s on this hardware (i5-1335U). The 2s target was aspirational — latency is accepted as-is for v0.1; optimization waits for finetune.
+Hold **Left Shift**, speak, release. Output looks like:
+
+```
+heard: ready in 21.4s
+heard: ptt via AT Translated Set 2 keyboard
+heard: listening (hold Shift, speak, release)
+  you: volume up
+  heard: volume_control(action='up')
+  heard: Ok(tool='volume_control', detail='volume up')  [hold 1.8s | stt tail 240ms | intent 58ms | dispatch 41ms fast 0.71]
+```
+
+Every command prints a per-stage breakdown: `hold` is your speaking time,
+`stt tail` is transcription cost *after* key release (streaming during the
+hold means this is only the post-pause remainder), then intent and dispatch.
+The trailing tag marks fast-path accepts with their cosine score; its absence
+means the generative fallback ran.
+
+Requirements: a microphone, PipeWire (`wpctl`) + Hyprland (`hyprctl`) for the
+tools that shell out, and membership in the `input` group for key capture.
+First run downloads Whisper + MiniLM weights (~200MB total) into local caches.
+
+---
+
+## How it works
+
+1. Hold left Shift — evdev captures key state (no X11/Wayland dependency). Devices are selected by actual keycode capability, so PTT lands on your keyboard instead of the first "Power Button".
+2. Audio streams continuously into a ring buffer; while the key is down, any segment ending in a ≥180ms pause is transcribed in a background thread (faster-whisper base, int8). Release only pays the post-pause tail.
+3. Resolve intent: the transcript is embedded and matched against precomputed intent centroids — dispatch in single-digit ms when confident, cheap decline for off-topic, generative Needle decode only when unsure.
+4. Dispatch to the matching tool handler (launch, media, volume, window, workspace, system query).
+5. Print the resolved tool call immediately, then the result with stage timings.
+
+---
+
+## Measured latency (i5-1335U, no GPU)
+
+| Stage | p50 | notes |
+|---|---|---|
+| intent: embed query (MiniLM int8) | 53ms | p95 101ms incl first-call warmup |
+| intent: classify + slots | <1ms | numpy dots over 18 centroids + regex |
+| intent: generative fallback | 6.5s | constrained decode, rare by design |
+| dispatch (dry) | ~0.1ms | validate + handler entry |
+| real spawn (wpctl / hyprctl) | 38 / 19ms | MPRIS tools skip this via persistent D-Bus |
+| end-to-end post-release | pending | fill from live `[...]` lines into [`reports/latency.md`](reports/latency.md) |
+
+Fast-path accuracy on the probe set: **19/20 accepted** (17/20 measured on
+hardware before the dictionary gate), **0 misaccepts**, **0 wrong declines**,
+all off-topic rejected via an explicit unknown centroid. The one holdout
+("focus on the browser") is deliberately ambiguous until focus-or-launch
+semantics absorb it.
+
+Full methodology + tuning tables: [`reports/latency.md`](reports/latency.md).
 
 ---
 
 ## Why Needle?
 
-heard routes spoken commands to tool calls. That is a classification problem, not a general reasoning problem. A 26M function-call model like Needle is the right tool for three reasons:
+heard routes spoken commands to tool calls. That is a classification problem, not a general reasoning problem. Needle — a 26M parameter function-call model — stays at the core for three reasons:
 
-**Speed.** A larger LLM adds seconds of latency on consumer hardware. Needle loads in ~1s and generates a tool-call in 3.5–5.5s on this hardware (13th-gen i5, constrained decoding). That is slow but usable for push-to-talk: the user controls when the pipeline starts, and a 4s wait for a correct action beats a 500ms hallucination. The constraint decoder is dropped post-finetune to save ~20% with no accuracy loss on the probe set.
+**Speed.** A larger LLM adds seconds of latency on consumer hardware. Generation is now the *fallback*, not the path: the common command resolves through embedding classification and slot lookup in well under 100ms; only ambiguous phrasings pay the ~6.5s decode. The bundled checkpoint's contrastive head was decayed to zero by pretraining, so the embeddings come from an int8 ONNX MiniLM instead (`embedder.py` picks this automatically; `HEARD_EMBEDDER=needle|fastembed` forces one).
 
-**Local-first.** Larger models often require cloud APIs or high-end GPUs. Needle runs on a laptop CPU with no special hardware and no network round trip. The only feature that ever touches the network is the optional `answer_query` fallback (v1), which is explicitly opt-in.
+**Local-first.** No cloud APIs, no network round trip, no special hardware. Everything runs on a laptop CPU. The only feature that will ever touch the network is the optional `answer_query` fallback (v1), explicitly opt-in.
 
-**Specialization.** A 7B+ general-purpose model dedicates most of its capacity to knowledge and dialogue. Needle is trained specifically for function-call extraction from natural language. Tool descriptions are the primary steering signal; tightening them alone moved accuracy from 75% to 92% in probing with no additional training data. A smaller, narrower model is harder to get wrong and easier to finetune.
-
-The tradeoff: Needle is not a chat model. It does not answer questions, hold context, or handle multi-turn dialogue. That is intentional. Every tool call is stateless and single-shot. When the user asks something open-ended ("what is the weather tomorrow?"), Needle only decides _that_ the input needs a text answer; the actual answering is delegated to a full LLM (v1). This keeps Needle's job narrow and reliable.
+**Specialization.** A 7B+ general-purpose model dedicates most of its capacity to knowledge and dialogue. Needle is trained specifically for function-call extraction; tool descriptions steer it (tightening them alone moved probe accuracy 75% → 92%). It is not a chat model and never answers questions — open-ended input is declined in milliseconds by the classifier's unknown centroid, not sent anywhere.
 
 ---
 
@@ -48,28 +96,48 @@ The tradeoff: Needle is not a chat model. It does not answer questions, hold con
 
 | Tool | Handler | What it does |
 |---|---|---|
-| `launch_app` | `tools/apps.py` | Launch an application by binary name |
-| `media_control` | `tools/media.py` | Play, pause, next, previous track (MPRIS over D-Bus) |
-| `volume_control` | `tools/volume.py` | Up, down, mute, set percent (PipeWire via wpctl) |
-| `window_action` | `tools/window.py` | Close, focus, fullscreen a window (hyprctl) |
-| `workspace_switch` | `tools/workspace.py` | Switch workspace by number (hyprctl) |
+| `launch_app` | `tools/apps.py` | Focus-or-launch: fuzzy-matches running windows via `hyprctl clients -j`, focuses if already open, else launches through uwsm. Spoken names resolve against installed `.desktop` entries (rapidfuzz) |
+| `media_control` | `tools/media.py` | Play, pause, next, previous over MPRIS — one persistent D-Bus connection (jeepney), playerctl fallback |
+| `volume_control` | `tools/volume.py` | Up, down, mute, set percent — percentages parsed from speech ("fifty", "65%", "half") |
+| `window_action` | `tools/window.py` | Close, fullscreen via hyprctl; focus falls back to generative parsing (needs targets) |
+| `workspace_switch` | `tools/workspace.py` | Switch by number, digits or words ("workspace three") |
 | `system_query` | `tools/system_query.py` | Battery, time, network, disk status |
 
 Tool schemas are generated from the registry (not stored as a static file), so descriptions, validation enums, and finetune data all derive from one source. No drift between what the model sees and what dispatch accepts.
 
 ---
 
-## Architecture (v0.1)
+## Architecture
 
 ```
-capture audio -> stt.py (Whisper) -> intent.py (Needle) -> tools/registry.py -> handler
-                                                                                      |
-                                                                               stdout result
+evdev (capability-matched PTT devices)
+   └─ hold: ring buffer streams through whisper in the background,
+      pause-delimited segments finalize as you speak
+        └─ release: transcribe only the tail
+             └─ intent.resolve()
+                  ├─ embedder.py   needle-contrastive | ONNX MiniLM (auto)
+                  ├─ classifier.py nearest-centroid + unknown rejection
+                  │                + slot lookup (numbers, app phrases)
+                  │                + .desktop dictionary corroboration for launch_app
+                  └─ needle generate (constrained)   ← fallback only
+                       └─ tools/registry.py -> handler -> stdout
 ```
 
-Every component is a single file under `heard/`. No persistence, no analytics, no responder process. The intent model loads once as a lazy module-level singleton and stays hot for the lifetime of the process.
+The dispatcher never passes raw model output to a shell. Arguments are validated against registry enums; the model selects an allowlisted action (`shell_allowlist.py`), never arbitrary shell text.
 
-The dispatcher (`tools/registry.py`) holds a `dict[str, Callable]` mapping tool names to handler functions. It never passes raw model output to a shell. Arguments are matched against the tool schema and dispatched with `handler(**arguments)`. The `shell_allowlist.py` provides known-safe command templates for the few tools that need subprocess execution; the model selects an allowlisted action, never arbitrary shell text.
+### Configuration (env)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `HEARD_CHECKPOINT` | `checkpoints/needle_checkpoint.pkl` | Needle weights path (any `*.pkl` in `checkpoints/` also works) |
+| `HEARD_EMBEDDER` | `auto` | `needle` \| `fastembed` \| `auto` (auto probes needle's contrastive head and falls back to MiniLM) |
+| `HEARD_ACCEPT_SCORE` | `0.55` | min cosine to accept a centroid outright |
+| `HEARD_MARGIN` | `0.04` | required lead over best other-tool class |
+| `HEARD_FLOOR_DECLINE` | `0.35` | below this (+ unknown agreeing): reject without fallback |
+| `HEARD_DICT_FLOOR` | `0.40` | launch_app accept bar when a strict `.desktop` hit corroborates |
+| `HEARD_DICT_CUTOFF` | `90` | rapidfuzz score for that dictionary hit |
+
+Tune thresholds from benchmark output, not feel — misaccepts are the hard gate.
 
 ---
 
@@ -77,54 +145,73 @@ The dispatcher (`tools/registry.py`) holds a `dict[str, Callable]` mapping tool 
 
 ```
 heard/
-├── pyproject.toml
-├── .github/workflows/test.yml  # CI: pytest on push/PR
+├── pyproject.toml               # entry point: uv run heard listen
+├── .github/workflows/test.yml   # CI: pytest on push/PR
 ├── heard/
-│   ├── cli.py                  # entrypoint: heard listen + config skeleton
-│   ├── stt.py                  # whisper capture + transcription (evdev hold-to-trigger)
-│   ├── intent.py               # Needle load + generate wrapper
-│   ├── shell_allowlist.py      # safe command templates
-│   ├── tools/
-│   │   ├── registry.py         # name -> handler dispatch + validate + known_tools()
-│   │   ├── types.py            # Ok, Rejected, Failed, ParamSpec, Entry
-│   │   ├── apps.py             # launch_app
-│   │   ├── media.py            # media_control
-│   │   ├── volume.py           # volume_control
-│   │   ├── window.py           # window_action (hyprctl)
-│   │   ├── workspace.py        # workspace_switch (hyprctl)
-│   │   ├── system_query.py     # battery, time, network, disk
-│   │   └── helpers/
-│   │       ├── network.py      # connectivity checks
-│   │       └── system.py       # format_bytes etc.
-├── tests/                      # 124 tests across 17 files
-├── checkpoints/                # gitignored, needle weights
+│   ├── cli.py                   # warmup, preflight, loop, stage-timing output
+│   ├── stt.py                   # capture bus, streaming hold STT, VAD trim
+│   ├── intent.py                # fast path first, generative fallback, checkpoint resolution
+│   ├── classifier.py            # prototypes, centroids, gating, slot extraction
+│   ├── embedder.py              # needle-contrastive / fastembed backends
+│   ├── shell_allowlist.py       # safe command templates
+│   └── tools/
+│       ├── registry.py          # name -> handler dispatch + validate
+│       ├── types.py             # Ok, Rejected, Failed, ParamSpec, Entry
+│       ├── apps.py              # focus-or-launch (hyprctl clients -j)
+│       ├── media.py             # MPRIS over jeepney, playerctl fallback
+│       ├── volume.py            # wpctl
+│       ├── window.py            # hyprctl dispatch
+│       ├── workspace.py         # hyprctl dispatch
+│       ├── system_query.py      # battery, time, network, disk
+│       └── helpers/             # apps (.desktop+rapidfuzz), network, system
+├── tests/                       # 180 tests across 18 files
+├── checkpoints/                 # gitignored — needle weights
 ├── scripts/
-│   └── benchmark_latency.py    # bare-metal latency probe
+│   └── benchmark_latency.py     # per-stage probes: --only intent|stt|dispatch|needle [--audio clip.wav]
 └── reports/
-    └── latency.md              # latency benchmark results
+    └── latency.md               # measured numbers + threshold tuning tables
+```
+
+---
+
+## Testing & benchmarking
+
+```bash
+uv run pytest                                            # 180 tests
+uv run python scripts/benchmark_latency.py --only intent # fast vs generative + tail split
+uv run python scripts/benchmark_latency.py --only stt    # audio finalize + whisper
+uv run python scripts/benchmark_latency.py --only dispatch
+uv run python scripts/benchmark_latency.py --audio cmd.wav
 ```
 
 ---
 
 ## Acceptance criteria (v0.1)
 
-- Each of the 6 tools resolves correctly from casual phrasing at least 5/6 times (probe: 19/20 on held-out set).
-- Needle inference latency: p50 3.5–5.5s on i5-1335U (no GPU). See [`reports/latency.md`](reports/latency.md).
-- Unresolvable input prints a declined/unparseable message to stdout; it never crashes.
+- ✅ Each of the 6 tools resolves correctly from casual phrasing (probe: 19/20 fast-path, 0 misaccepts).
+- ✅ Classifier-accepted commands resolve intent in <100ms post-STT.
+- ⏳ End-to-end key-release → feedback under 1s on i5-1335U — STT tail numbers being collected from live use; fill [`reports/latency.md`](reports/latency.md).
+- ✅ Generative Needle remains fallback-only (fires on 1–3 of 20 typical commands).
+- ✅ Unresolvable input prints a declined/unparseable message; it never crashes.
+
+## Known limitations
+
+- English-only: Whisper pinned to `language="en"`, prototypes and slot parsers are English. Spanish support is scoped but unbuilt.
+- The bundled Needle checkpoint has an untrained contrastive head — the fast path therefore depends on fastembed (~90MB one-time download). A retrieval-finetuned checkpoint would flip `HEARD_EMBEDDER=needle` back on.
+- Generative fallback costs seconds (fp32 JAX decode); fine at 5–15% traffic, painful above it.
+- WM tools assume Hyprland; Sway/KDE backends are v1 work.
 
 ---
 
 ## Roadmap (v1)
 
-v0.1 proves the capture-resolve-dispatch path. v1 adds the infrastructure for a production voice assistant: daemonization, feedback loops, analytics, and multi-desktop support.
-
 | Area | What lands |
 |---|---|
-| **Daemon** | Persistent background process with systemd user unit; optional wake-word support alongside push-to-talk |
-| **Responder** | Floating GTK popup and local TTS (piper/espeak-ng); runs as a separate process over a unix socket so the daemon stays non-blocking |
-| **Confidence gating** | `answer_query` escape hatch for low-confidence or open-ended input, forwarded to an LLM API (Claude/ChatGPT) for the actual response |
-| **Analytics** | ClickHouse event logging with latency breakdown (STT vs intent); Prefect daily rollups and a retrain pipeline that converts failures into finetune data |
-| **WM backends** | Sway and KDE support alongside the v0.1 Hyprland backend; backend detection with explicit config override for the systemd environment gap |
-| **API** | FastAPI stats surface: `/events`, `/stats/daily`, `/health` |
+| **Daemon** | systemd user unit; optional wake-word alongside push-to-talk |
+| **Responder** | Floating GTK popup + local TTS (piper/espeak-ng) over a unix socket |
+| **Fallback speed** | Schema prefix-cache or GGUF port to take the 6.5s tail to hundreds of ms |
+| **Languages** | Bilingual EN/ES prototypes, multilingual embedder, per-language STT |
+| **Analytics** | Latency + failure event logging, daily rollups, retrain pipeline (failures → finetune data) |
+| **WM backends** | Sway and KDE alongside Hyprland |
 
-The model stays 26M Needle at the core. v1 adds the confidence thresholds, fallback paths, observability, and persistent process lifecycle around it.
+The model stays 26M Needle at the core. v1 adds the daemon lifecycle, feedback surfaces, observability, and multilingual reach around it.
