@@ -4,7 +4,7 @@ PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
-ExecStart=%h/.local/bin/uv run --project %h/Documents/GitHub/heard heard listen
+ExecStart=%h/.local/bin/heard listen
 Restart=on-failure
 RestartSec=2
 
