@@ -1,8 +1,15 @@
+import time
+
 import typer
 
 app = typer.Typer(name="heard")
 config_app = typer.Typer(name="config", help="Manage persistent configuration.")
 app.add_typer(config_app)
+
+
+def _fmt_call(call: dict) -> str:
+    args = ", ".join(f"{k}={v!r}" for k, v in call.get("arguments", {}).items())
+    return f"{call.get('name')}({args})"
 
 
 @app.command()
@@ -11,22 +18,53 @@ def listen():
     from . import stt, intent
     from .tools import registry
 
+    try:
+        devs = stt.check_ptt()
+    except RuntimeError as e:
+        typer.secho(f"heard: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from e
+    names = ", ".join(d.name for d in devs)
+
+    print("heard: warming up ...", flush=True)
+    t0 = time.perf_counter()
+    stt.warmup()
+    intent.warmup()
+    print(f"heard: ready in {time.perf_counter() - t0:.1f}s")
+    print(f"heard: ptt via {names}")
     print("heard: listening (hold Shift, speak, release)")
     print("heard: press Ctrl-C to stop")
     try:
         while True:
-            text = stt.capture_while_held()
-            if not text:
+            cap = stt.capture()
+            if not cap.text:
                 continue
-            print(f"  you: {text}")
-            resolution = intent.resolve(text)
+            print(f"  you: {cap.text}", flush=True)
+
+            resolution = intent.resolve(cap.text)
+            intent_ms = resolution.latency_ms or 0.0
             if resolution.tool_call:
+                # feedback lands before dispatch; perceived latency is intent latency
+                print(f"  heard: {_fmt_call(resolution.tool_call)}", flush=True)
+                t1 = time.perf_counter()
                 output = registry.dispatch(resolution.tool_call)
+                dispatch_ms = (time.perf_counter() - t1) * 1000
             else:
                 output = f"declined: {resolution.reason}" if resolution.reason else "declined"
-            print(f"  heard: {output}")
+                dispatch_ms = 0.0
+            src = f" {resolution.source}" if resolution.source == "fast" else ""
+            score = f" {resolution.score:.2f}" if resolution.score is not None else ""
+            stream = f" +{cap.segments - 1} streamed" if cap.segments > 1 else ""
+            print(
+                f"  heard: {output}  "
+                f"[hold {cap.hold_ms / 1000:.1f}s | stt tail {cap.tail_ms:.0f}ms{stream} | "
+                f"intent {intent_ms:.0f}ms | dispatch {dispatch_ms:.0f}ms{src}{score}]",
+                flush=True,
+            )
     except KeyboardInterrupt:
         print("\nheard: stopped")
+    except RuntimeError as e:
+        typer.secho(f"heard: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from e
 
 
 @config_app.command()
