@@ -2,8 +2,8 @@ from unittest import mock
 
 import pytest
 
+from heard.tools.types import Failed, Ok, Rejected
 from heard.tools.workspace import workspace_switch
-from heard.tools.types import Ok, Rejected, Failed
 
 
 @pytest.fixture

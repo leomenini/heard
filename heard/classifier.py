@@ -12,9 +12,9 @@ Verdicts:
   - fallback    -> uncertain; caller retries with generative Needle resolve
 """
 
-from dataclasses import dataclass
 import os
 import re
+from dataclasses import dataclass
 
 import numpy as np
 from rapidfuzz import fuzz, process
@@ -23,15 +23,15 @@ from .tools.helpers.apps import installed_apps
 
 # Cosine thresholds. Tuned via scripts/benchmark_latency.py fast-path probe;
 # override live with HEARD_FLOOR_DECLINE / HEARD_ACCEPT_SCORE / HEARD_MARGIN.
-FLOOR_DECLINE = float(os.environ.get("HEARD_FLOOR_DECLINE", 0.35))
-ACCEPT_SCORE = float(os.environ.get("HEARD_ACCEPT_SCORE", 0.55))
-MARGIN = float(os.environ.get("HEARD_MARGIN", 0.04))
+FLOOR_DECLINE = float(os.environ.get("HEARD_FLOOR_DECLINE", "0.35"))
+ACCEPT_SCORE = float(os.environ.get("HEARD_ACCEPT_SCORE", "0.55"))
+MARGIN = float(os.environ.get("HEARD_MARGIN", "0.04"))
 
 # launch_app corroboration: app nouns scatter in embedding space, so a strict
 # dictionary hit against installed .desktop entries lets an utterance clear a
 # lower bar than ACCEPT_SCORE -- but only when the best class is launch_app.
-DICT_FLOOR = float(os.environ.get("HEARD_DICT_FLOOR", 0.40))
-DICT_CUTOFF = int(os.environ.get("HEARD_DICT_CUTOFF", 90))
+DICT_FLOOR = float(os.environ.get("HEARD_DICT_FLOOR", "0.40"))
+DICT_CUTOFF = int(os.environ.get("HEARD_DICT_CUTOFF", "90"))
 
 
 @dataclass(frozen=True)
@@ -219,7 +219,8 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "cierra esta ventana",
         "cierra la ventana",
     ]),
-    "window_action:focus": ("window_action", {"action": "focus"}, [],),  # target needed -> always fallback
+    # focus needs a generated target -> always falls back to needle
+    "window_action:focus": ("window_action", {"action": "focus"}, []),
     "window_action:fullscreen": ("window_action", {"action": "fullscreen"}, [
         "make it fullscreen",
         "go fullscreen",
@@ -314,16 +315,18 @@ def parse_spoken_number(text: str) -> int | None:
                 if nxt in _TENS_WORDS:
                     val += _TENS_WORDS[nxt]
                     i += 1
-                    if i + 1 < len(tokens) and tokens[i + 1] in _NUM_WORDS and _NUM_WORDS[tokens[i + 1]] < 10:
-                        val += _NUM_WORDS[tokens[i + 1]]
+                    nxt2 = tokens[i + 1] if i + 1 < len(tokens) else None
+                    if nxt2 in _NUM_WORDS and _NUM_WORDS[nxt2] < 10:
+                        val += _NUM_WORDS[nxt2]
                         i += 1
                 elif nxt in _NUM_WORDS and _NUM_WORDS[nxt] < 10:
                     val += _NUM_WORDS[nxt]
                     i += 1
         elif tok in _TENS_WORDS:
             val = _TENS_WORDS[tok]
-            if i + 1 < len(tokens) and tokens[i + 1] in _NUM_WORDS and _NUM_WORDS[tokens[i + 1]] < 10:
-                val += _NUM_WORDS[tokens[i + 1]]
+            nxt = tokens[i + 1] if i + 1 < len(tokens) else None
+            if nxt in _NUM_WORDS and _NUM_WORDS[nxt] < 10:
+                val += _NUM_WORDS[nxt]
                 i += 1
         elif tok in _HUNDRED_WORDS:
             val = _HUNDRED_WORDS[tok]
@@ -353,21 +356,11 @@ def extract_percent(text: str) -> int | None:
 
 def extract_workspace(text: str) -> str | None:
     """Pull a workspace number out of the transcript."""
-    m = re.search(r"\b(?:workspace|espacio\s+de\s+trabajo|escritorio)?\s*(\d{1,2})\b", text)
+    m = re.search(
+        r"\b(?:workspace|espacio\s+de\s+trabajo|escritorio)?\s*(\d{1,2})\b", text)
     if m and m.group(1):
         return m.group(1)
     for tok in text.lower().replace("-", " ").split():
-        if tok in _NUM_WORDS:
-            return str(_NUM_WORDS[tok])
-    return None
-
-
-def extract_workspace(text: str) -> str | None:
-    """Pull a workspace number out of the transcript."""
-    m = re.search(r"\b(?:workspace\s+)?(\d{1,2})\b", text)
-    if m:
-        return m.group(1)
-    for tok in text.lower().split():
         if tok in _NUM_WORDS:
             return str(_NUM_WORDS[tok])
     return None

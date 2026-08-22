@@ -1,5 +1,6 @@
 import re
 
+
 def format_bytes(n: int) -> str:
     for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
         if n < 1024 or unit == "TiB":

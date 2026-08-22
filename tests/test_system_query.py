@@ -1,7 +1,7 @@
 from unittest import mock
 
 from heard.tools.system_query import system_query
-from heard.tools.types import Ok, Rejected, Failed
+from heard.tools.types import Failed, Ok, Rejected
 
 
 class TestSystemQuery:

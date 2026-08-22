@@ -1,11 +1,10 @@
-from .types import Ok, Rejected, Failed, Result, ParamSpec, Entry
-from .system_query import system_query
-from .volume import volume_control
-from .media import media_control
 from .apps import launch_app
+from .media import media_control
+from .system_query import system_query
+from .types import Entry, Failed, ParamSpec, Rejected, Result
+from .volume import volume_control
 from .window import window_action
 from .workspace import workspace_switch
-
 
 REGISTRY: dict[str, Entry] = {
     "system_query": Entry(

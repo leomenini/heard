@@ -6,7 +6,6 @@ from jeepney.io.blocking import open_dbus_connection
 
 from .types import Failed, Ok, Rejected, Result
 
-
 METHODS = {"play": "Play", "pause": "Pause", "next": "Next", "previous": "Previous"}
 MPRIS_PREFIX = "org.mpris.MediaPlayer2."
 DBUS_TIMEOUT_S = 1.0

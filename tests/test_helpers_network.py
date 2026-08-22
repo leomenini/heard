@@ -1,10 +1,10 @@
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 from heard.tools.helpers.network import (
+    NetworkState,
     _has_active_interface,
     _has_internet,
-    NetworkState,
 )
 
 
@@ -24,7 +24,6 @@ class TestHasActiveInterface:
     @mock.patch("heard.tools.helpers.network.Path.iterdir")
     def test_wifi_up(self, mock_iterdir):
         wifi = Path("/sys/class/net/wlan0")
-        operstate = wifi / "operstate"
         mock_iterdir.return_value = [Path("/sys/class/net/lo"), wifi]
 
         with mock.patch.object(Path, "iterdir", return_value=[Path("/sys/class/net/lo"), wifi]):

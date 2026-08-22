@@ -1,0 +1,12 @@
+[Unit]
+Description=heard - push-to-talk voice control daemon
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/uv run --project %h/Documents/GitHub/heard heard listen
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

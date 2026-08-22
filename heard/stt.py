@@ -7,9 +7,8 @@ from dataclasses import dataclass
 
 import numpy as np
 import sounddevice as sd
-from evdev import InputDevice, list_devices, ecodes
+from evdev import InputDevice, ecodes, list_devices
 from faster_whisper import WhisperModel
-
 
 SAMPLE_RATE = 16000
 WHISPER_SIZE = "base"
@@ -47,7 +46,7 @@ def _stt_language() -> str | None:
 
 def warmup() -> None:
     """Load whisper, open the capture stream, JIT one tiny transcription."""
-    bus = _bus()
+    _bus()                        # opens + starts the persistent capture stream
     model = _model()
     silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
     next(iter(model.transcribe(silence, language=_stt_language(),
@@ -60,8 +59,8 @@ def _keycode(key_name: str) -> int:
     except AttributeError:
         raise ValueError(
             f"unknown key code {key_name!r}; "
-            f"use e.g. KEY_LEFTSHIFT, KEY_LEFTCONTROL, KEY_SCROLLLOCK"
-        )
+            "use e.g. KEY_LEFTSHIFT, KEY_LEFTCONTROL, KEY_SCROLLLOCK"
+        ) from None
 
 
 _GROUP_HINT = (
@@ -158,7 +157,7 @@ class AudioBus:
     def read(self, start: int, end: int) -> np.ndarray:
         with self._lock:
             pieces = []
-            for chunk, off in zip(self._chunks, self._offsets):
+            for chunk, off in zip(self._chunks, self._offsets, strict=True):
                 cstart, cend = off, off + len(chunk)
                 if cend <= start or cstart >= end:
                     continue
@@ -291,10 +290,9 @@ class HoldSession:
                     break                       # no pause yet; keep waiting
                 if piece_end <= 0:
                     break
-            else:
-                if piece_end < SAMPLE_RATE * MIN_SEGMENT_S:
-                    self._seg_start += cut      # skip sub-minimum blip
-                    continue
+            elif piece_end < SAMPLE_RATE * MIN_SEGMENT_S:
+                self._seg_start += cut      # skip sub-minimum blip
+                continue
 
             piece = seg[:piece_end]
             text = transcribe(piece)
@@ -321,8 +319,50 @@ class CaptureResult:
     segments: int = 0       # pieces finalized during the hold (streaming wins)
 
 
-def capture(ptt_key: str = "KEY_LEFTSHIFT") -> CaptureResult:
-    """Block until a full PTT hold completes; return transcript + timings."""
+class HoldController:
+    """Drives one hold without evdev -- for IPC-triggered push-to-talk."""
+
+    def __init__(self, bus: AudioBus):
+        self._bus = bus
+        self._session: HoldSession | None = None
+        self._worker: threading.Thread | None = None
+        self._press_t: float | None = None
+
+    def down(self) -> bool:
+        """Start recording; False when a hold is already in progress."""
+        if self._session is not None:
+            return False
+        self._press_t = time.perf_counter()
+        self._session = HoldSession(self._bus)
+        self._worker = threading.Thread(target=self._session.run, daemon=True)
+        self._worker.start()
+        return True
+
+    def up(self) -> CaptureResult:
+        """End the hold and wait for the transcript."""
+        session, worker = self._session, self._worker
+        release_t = time.perf_counter()
+        if session is None or worker is None:
+            return CaptureResult("", 0.0, 0.0)
+        session.release.set()
+        worker.join(timeout=30)
+        text = session.text()
+        if session.error is not None:
+            raise RuntimeError(f"stt error: {session.error}")
+        end = self._bus.pos()
+        self._bus.discard_before(end)
+        hold_ms = (release_t - self._press_t) * 1000 if self._press_t else 0.0
+        tail_ms = (time.perf_counter() - release_t) * 1000
+        result = CaptureResult(text, hold_ms, tail_ms,
+                               segments=len(session._parts))
+        self._session = None
+        self._worker = None
+        return result
+
+
+def capture_on_controller(controller: HoldController,
+                          ptt_key: str = "KEY_LEFTSHIFT") -> CaptureResult:
+    """Evdriven hold routed through a shared controller (IPC-safe)."""
     code = _keycode(ptt_key)
     devs = check_ptt(ptt_key)
     global _ptt_announced
@@ -330,53 +370,28 @@ def capture(ptt_key: str = "KEY_LEFTSHIFT") -> CaptureResult:
         names = ", ".join(d.name for d in devs)
         print(f"heard: ptt on {ptt_key} via {names}", flush=True)
         _ptt_announced = True
-    bus = _bus()
-    events = _ptt_events(devs, code)
-
-    session: HoldSession | None = None
-    worker: threading.Thread | None = None
-    press_t: float | None = None
-    release_t: float | None = None
-
-    def _finish() -> tuple[HoldSession, threading.Thread]:
-        session.release.set()
-        worker.join(timeout=30)
-        return session, worker
 
     try:
-        for event in events:
-            if event.value == 1 and session is None:
-                press_t = time.perf_counter()
-                session = HoldSession(bus)
-                worker = threading.Thread(target=session.run, daemon=True)
-                worker.start()
-
-            elif event.value == 0 and session is not None:
-                release_t = time.perf_counter()
-                session.release.set()
-                worker.join(timeout=30)
-                end = bus.pos()
-                text = session.text()
-                if session.error is not None:
-                    print(f"heard: stt error: {session.error}", flush=True)
-                    session = None
-                    worker = None
-                    continue
-                bus.discard_before(end)
-                hold_ms = (release_t - press_t) * 1000 if press_t else 0.0
-                tail_ms = (time.perf_counter() - release_t) * 1000
-                result = CaptureResult(text, hold_ms, tail_ms,
-                                       segments=len(session._parts))
-                session = None
-                worker = None
-                if text:
+        for event in _ptt_events(devs, code):
+            if event.value == 1:
+                if not controller.down():
+                    continue                    # binding already recording
+            elif event.value == 0 and controller._session is not None:
+                result = controller.up()
+                if result.text:
                     return result
     finally:
-        if session is not None and worker is not None:
-            session.release.set()
-            worker.join(timeout=30)
+        if controller._session is not None:
+            controller._session.release.set()
+            if controller._worker is not None:
+                controller._worker.join(timeout=30)
 
     return CaptureResult("", 0.0, 0.0)
+
+
+def capture(ptt_key: str = "KEY_LEFTSHIFT") -> CaptureResult:
+    """Block until a full PTT hold completes; return transcript + timings."""
+    return capture_on_controller(HoldController(_bus()), ptt_key)
 
 
 def capture_while_held(ptt_key: str = "KEY_LEFTSHIFT") -> str:

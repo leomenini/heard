@@ -1,7 +1,7 @@
 from unittest import mock
 
+from heard.tools.types import Failed, Ok, Rejected
 from heard.tools.volume import volume_control
-from heard.tools.types import Ok, Rejected, Failed
 
 
 class TestVolumeControl:

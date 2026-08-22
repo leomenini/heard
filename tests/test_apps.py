@@ -1,9 +1,8 @@
 from unittest import mock
 
-from heard.tools.apps import launch_app, _find_window
+from heard.tools.apps import _find_window, launch_app
 from heard.tools.helpers.wm import Window
-from heard.tools.types import Ok, Rejected, Failed
-
+from heard.tools.types import Ok, Rejected
 
 WINDOWS = [
     Window("0x1", "firefox", "Mozilla Firefox"),

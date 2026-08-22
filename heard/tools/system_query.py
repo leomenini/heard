@@ -1,12 +1,15 @@
-from pathlib import Path
-from datetime import datetime
 import shutil
-import time as timelib
-import psutil
+from datetime import datetime
+from pathlib import Path
 
-from heard.tools.helpers.network import _has_internet, NetworkState, _has_active_interface
-from heard.tools.helpers.system import format_bytes, is_physical_disk
-from .types import Ok, Rejected, Result
+from heard.tools.helpers.network import (
+    NetworkState,
+    _has_active_interface,
+    _has_internet,
+)
+from heard.tools.helpers.system import format_bytes
+
+from .types import Failed, Ok, Rejected, Result
 
 
 def _battery() -> tuple[str, int] | None:

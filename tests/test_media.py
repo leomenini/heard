@@ -1,7 +1,7 @@
 from unittest import mock
 
-from heard.tools.media import media_control, _mpris_send, _playerctl
-from heard.tools.types import Ok, Rejected, Failed
+from heard.tools.media import _mpris_send, _playerctl, media_control
+from heard.tools.types import Failed, Ok, Rejected
 
 
 class TestMediaControl:
@@ -36,9 +36,11 @@ class TestMediaControl:
         assert isinstance(r, Failed)
 
     @mock.patch("heard.tools.media._mpris_send", return_value=False)
-    @mock.patch("heard.tools.media.subprocess.run",
-                side_effect=mock.Mock(side_effect=__import__("subprocess").CalledProcessError(3, "playerctl")))
-    def test_playerctl_nonzero_exit(self, mock_run, mock_send):
+    @mock.patch("heard.tools.media.subprocess.run")
+    def test_playerctl_nonzero_exit(self, mock_run, _send):
+        import subprocess
+
+        mock_run.side_effect = subprocess.CalledProcessError(3, "playerctl")
         r = media_control("next")
         assert isinstance(r, Failed)
 

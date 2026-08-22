@@ -1,4 +1,4 @@
-from heard.tools.types import Ok, Rejected, Failed, ParamSpec, Entry
+from heard.tools.types import Entry, Failed, Ok, ParamSpec, Rejected
 
 
 class TestOk:

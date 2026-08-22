@@ -9,7 +9,7 @@
 
 hear + d. It's the joke `sshd` would make if it could. Reads as an English word, is exactly what the daemon does, and `heard: launching spotify` in a log line is funny.
 
-> **WIP.** v0.1 is a foreground blocking loop: run `uv run heard listen`, hold Shift, speak, release, Ctrl-C to stop. Daemonization arrives in v1.
+> **v1.0.** `heard listen` is both the foreground loop and the daemon: run it directly, or install the systemd unit and drive holds from compositor keybindings. Ctrl-C stops the foreground loop.
 
 ---
 
@@ -40,6 +40,44 @@ heard: listening (hold to talk, release to send)
 Spanish: `uv run heard config set language es` — switches STT decoding to
 Spanish and swaps the embedding model to a cross-lingual one; the classifier
 understands both languages either way.
+
+---
+
+## Daemon & compositor keybindings
+
+`heard listen` doubles as the daemon: besides watching your PTT key it serves
+a unix socket (`$XDG_RUNTIME_DIR/heard.sock`) so keybindings can drive holds
+as one-shot commands. Install the systemd user unit:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp packaging/systemd/heard.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now heard
+journalctl --user -u heard -f          # watch transcripts + results live
+```
+
+Then bind hold-down/hold-up to any key. The binding pair uses press and
+release events of the same key:
+
+**Hyprland** (`hyprland.conf`) — bind = on press, bindr = on release:
+
+```ini
+bind  = , mouse:275, exec, heard hold down    # example: side mouse button
+bindr = , mouse:275, exec, heard hold up
+```
+
+**Sway** (`config`):
+
+```
+bindsym --release XF86AudioMicMute exec heard hold up
+bindsym XF86AudioMicMute exec heard hold down
+```
+
+**KDE**: System Settings → Shortcuts → Add Command, `heard hold down` on
+press and `heard hold up` on release of the chosen shortcut.
+
+The daemon keeps models hot, so a binding-triggered command costs zero load
+time; both triggers share one controller and can never record simultaneously.
 
 Every command prints a per-stage breakdown: `hold` is your speaking time,
 `stt tail` is transcription cost *after* key release (streaming during the
@@ -165,25 +203,34 @@ Tune thresholds from benchmark output, not feel — misaccepts are the hard gate
 ```
 heard/
 ├── pyproject.toml               # entry point: uv run heard listen
-├── .github/workflows/test.yml   # CI: pytest on push/PR
+├── .github/workflows/test.yml   # CI: ruff + pytest on push/PR
 ├── heard/
-│   ├── cli.py                   # warmup, preflight, loop, stage-timing output
+│   ├── cli.py                   # warmup, preflight, loop, hold bindings, stage timings
 │   ├── stt.py                   # capture bus, streaming hold STT, VAD trim
 │   ├── intent.py                # fast path first, generative fallback, checkpoint resolution
-│   ├── classifier.py            # prototypes, centroids, gating, slot extraction
+│   ├── classifier.py            # bilingual prototypes, centroids, gating, slot extraction
 │   ├── embedder.py              # needle-contrastive / fastembed backends
+│   ├── config.py                # config.toml load/save
+│   ├── ipc.py                   # unix-socket hold server + one-shot clients
+│   ├── lock.py                  # single-instance flock guard
+│   ├── events.py                # local JSONL usage log
 │   ├── shell_allowlist.py       # safe command templates
 │   └── tools/
 │       ├── registry.py          # name -> handler dispatch + validate
 │       ├── types.py             # Ok, Rejected, Failed, ParamSpec, Entry
-│       ├── apps.py              # focus-or-launch (hyprctl clients -j)
+│       ├── apps.py              # focus-or-launch over the WM backend
 │       ├── media.py             # MPRIS over jeepney, playerctl fallback
 │       ├── volume.py            # wpctl
-│       ├── window.py            # hyprctl dispatch
-│       ├── workspace.py         # hyprctl dispatch
+│       ├── window.py            # close/focus/fullscreen via WM backend
+│       ├── workspace.py         # workspace switch via WM backend
 │       ├── system_query.py      # battery, time, network, disk
-│       └── helpers/             # apps (.desktop+rapidfuzz), network, system
-├── tests/                       # 180 tests across 18 files
+│       └── helpers/
+│           ├── wm.py            # Hyprland / Sway / KDE backends
+│           ├── apps.py          # .desktop enumeration (all locales) + rapidfuzz
+│           ├── network.py       # connectivity checks
+│           └── system.py        # format_bytes etc.
+├── packaging/systemd/heard.service
+├── tests/                       # 234 tests across 21 files
 ├── checkpoints/                 # gitignored — needle weights
 ├── scripts/
 │   └── benchmark_latency.py     # per-stage probes: --only intent|stt|dispatch|needle [--audio clip.wav]
@@ -205,11 +252,13 @@ uv run python scripts/benchmark_latency.py --audio cmd.wav
 
 ---
 
-## Acceptance criteria (v0.1)
+## Acceptance criteria (v1.0)
 
-- ✅ Each of the 6 tools resolves correctly from casual phrasing (probe: 19/20 fast-path, 0 misaccepts).
+- ✅ Each of the 6 tools resolves correctly from casual phrasing, EN and ES (probe: 19/20 EN + 16/16 ES fast-path, 0 misaccepts).
 - ✅ Classifier-accepted commands resolve intent in <100ms post-STT.
-- ⏳ End-to-end key-release → feedback under 1s on i5-1335U — STT tail numbers being collected from live use; fill [`reports/latency.md`](reports/latency.md).
+- ✅ Daemon mode: systemd unit, single-instance lock, unix-socket hold bindings for Hyprland/Sway/KDE.
+- ✅ Local JSONL event log for threshold tuning.
+- ⏳ End-to-end key-release → feedback under 1s on i5-1335U — STT tail numbers being collected from live `[...]` lines; fill [`reports/latency.md`](reports/latency.md).
 - ✅ Generative Needle remains fallback-only (fires on 1–3 of 20 typical commands).
 - ✅ Unresolvable input prints a declined/unparseable message; it never crashes.
 
@@ -222,15 +271,14 @@ uv run python scripts/benchmark_latency.py --audio cmd.wav
 
 ---
 
-## Roadmap (v1)
+## Roadmap (post-1.0)
 
 | Area | What lands |
 |---|---|
-| **Daemon** | systemd user unit; optional wake-word alongside push-to-talk |
-| **Responder** | Floating GTK popup + local TTS (piper/espeak-ng) over a unix socket |
+| **Responder** | Floating GTK popup + local TTS (piper/espeak-ng) over the existing unix socket |
 | **Fallback speed** | Schema prefix-cache or GGUF port to take the 6.5s tail to hundreds of ms |
 | **Languages** | More languages via the existing prototype + multilingual-embedder mechanism |
-| **Analytics** | Latency + failure event logging, daily rollups, retrain pipeline (failures → finetune data) |
-| **WM backends** | Sway and KDE alongside Hyprland |
+| **Analytics** | Daily rollups over the JSONL log; retrain pipeline (failures → finetune data) |
+| **KDE fullscreen** | KWin-script based fullscreen toggle (close/focus/workspaces already work) |
 
-The model stays 26M Needle at the core. v1 adds the daemon lifecycle, feedback surfaces, observability, and multilingual reach around it.
+The model stays 26M Needle at the core. Later releases add feedback surfaces, a faster fallback tail, and broader language coverage.

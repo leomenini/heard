@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from needle import generate
 
-from heard.tools.registry import known_tools, dispatch
+from heard.tools.registry import dispatch, known_tools
 
 MAX_GEN_LEN = 64
 SAMPLE_RATE = 16000
@@ -148,8 +148,8 @@ def bench_intent_stages():
     """Fast-path classify + generative fallback per probe, with accuracy."""
     import numpy as np
 
-    import heard.intent as intent
-    from heard.classifier import ACCEPT_SCORE, MARGIN, FLOOR_DECLINE
+    from heard import intent
+    from heard.classifier import ACCEPT_SCORE, FLOOR_DECLINE, MARGIN
     from heard.intent import _checkpoint_file
 
     print("\n--- INTENT STAGES ---")
@@ -270,7 +270,7 @@ def bench_intent_stages():
         print(f"  nothing accepted: current ACCEPT_SCORE={ACCEPT_SCORE}; "
               f"probe sims span {lo:.3f}-{hi:.3f}. Try e.g.\n"
               f"    HEARD_ACCEPT_SCORE={max(0.0, hi - 0.02):.2f} "
-              f"HEARD_MARGIN={MARGIN / 4:.3f} uv run python scripts/benchmark_latency.py --only intent")
+              "HEARD_MARGIN=0.01 uv run python scripts/benchmark_latency.py --only intent")
     print("\n  latency:")
     _print_stats("embed (encode query)", embed_ms)
     if fast_ms:
@@ -308,7 +308,7 @@ def bench_generative_tail(model, params, tok, tools_json: str):
 
 
 def _model_triple():
-    import heard.intent as intent
+    from heard import intent
 
     intent._classifier()          # ensures model load + encoder JIT
     return intent._model()
@@ -344,7 +344,7 @@ def bench_audio_finalize():
 
 def bench_stt(audio_path: str | None):
     """Full-clip vs pause-trimmed-tail transcription."""
-    import heard.stt as stt
+    from heard import stt
 
     print("\n--- STT ---")
     stt.warmup()
@@ -413,14 +413,14 @@ def bench_dispatch():
                 ["hyprctl", "activewindow"]):
         try:
             t0 = time.perf_counter()
-            r = subprocess.run(cmd, capture_output=True, timeout=2)
+            r = subprocess.run(cmd, capture_output=True, timeout=2, check=False)
             ms = (time.perf_counter() - t0) * 1000
             print(f"    {' '.join(cmd)}: {ms:.1f}ms rc={r.returncode}")
         except Exception as e:
             print(f"    {' '.join(cmd)}: unavailable ({type(e).__name__})")
 
 
-def run_constrained(model, params, tok, tools_json, label: str, constrained: bool):
+def run_constrained(model, params, tok, tools_json, label: str, constrained: bool):  # noqa: PLR0913
     print(f"\n--- {label} ---")
     latencies = []
     correct_tool = 0

@@ -43,8 +43,8 @@ def _parse_desktop_entry(path: Path) -> list[tuple[str, str]]:
     hidden = False
     names: list[str] = []
 
-    for line in text.splitlines():
-        line = line.strip()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("["):

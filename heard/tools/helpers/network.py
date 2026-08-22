@@ -1,6 +1,6 @@
+import socket
 from enum import Enum
 from pathlib import Path
-import socket
 
 
 class NetworkState(str, Enum):

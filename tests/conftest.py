@@ -23,7 +23,7 @@ def _never_touch_live_compositor(monkeypatch):
     wm._kde_kdotool, wm._dbus_call); anything unmocked explodes loudly
     instead of closing the developer's windows.
     """
-    import heard.tools.helpers.wm as wm
+    from heard.tools.helpers import wm
 
     def _blocked(name):
         def boom(*a, **k):

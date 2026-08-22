@@ -1,5 +1,4 @@
 import json
-
 from unittest import mock
 
 import pytest
@@ -90,8 +89,11 @@ class TestKde:
         def fake_kdotool(*args):
             if args[:1] == ("search",):
                 return "944\n945"
-            return {"944": "Firefox", "945": "Term"}.get(args[1], "") \
-                if args[0] == "getwindowname" else {"944": "firefox", "945": "foot"}.get(args[1], "")
+            names = {"944": "Firefox", "945": "Term"}
+            classes = {"944": "firefox", "945": "foot"}
+            if args[0] == "getwindowname":
+                return names.get(args[1], "")
+            return classes.get(args[1], "")
 
         with mock.patch("heard.tools.helpers.wm._kde_kdotool", side_effect=fake_kdotool):
             windows = wm.list_windows()
@@ -108,7 +110,7 @@ class TestKde:
 
         # direct: switch_workspace routes to _kwin_run_script on kde
         with mock.patch.object(wm, "require", lambda: "kde"), \
-             mock.patch.object(wm, "_kwin_run_script", side_effect=fake_run):
+             mock.patch.object(wm, "_kwin_run_script", fake_run):
             wm.switch_workspace(5)
         assert "workspace.currentDesktop = 5" in captured["src"]
 
@@ -120,8 +122,11 @@ class TestFocusByToken:
                 Window("12", "foot", "terminal")]
         sent = []
 
+        def record(cmd):
+            sent.append(cmd)
+
         with mock.patch.object(wm, "list_windows", return_value=wins), \
-             mock.patch.object(wm, "_run", side_effect=lambda cmd: sent.append(cmd)):
+             mock.patch.object(wm, "_run", side_effect=record):
             wm.focus_by_token("mozilla")
         assert sent == [["swaymsg", "[con_id=11]", "focus"]]
 

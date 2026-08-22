@@ -22,9 +22,9 @@ class TestIntent:
         assert r.latency_ms == 100.0
 
     def test_tools_json_cache_exists(self):
-        import heard.intent
-        from heard.tools.registry import known_tools
         import json
+
+        from heard.tools.registry import known_tools
         # Verify the function exists and produces valid JSON
         expected = json.dumps(known_tools())
         assert expected  # non-empty
@@ -33,6 +33,7 @@ class TestIntent:
 class TestCheckpointResolution:
     def test_missing_checkpoint_raises_with_instructions(self, tmp_path, monkeypatch):
         import pytest
+
         from heard import intent
 
         monkeypatch.chdir(tmp_path)

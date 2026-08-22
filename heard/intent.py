@@ -1,16 +1,18 @@
-import json, os, time
+import json
+import os
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-
 from needle import (
     SimpleAttentionNetwork,
     generate,
     get_tokenizer,
     load_checkpoint,
 )
+
 from .classifier import Classifier
 from .embedder import resolve_encoder
 from .tools import registry

@@ -1,8 +1,8 @@
 import json
 from unittest import mock
 
-from heard.tools.registry import REGISTRY, dispatch, validate, known_tools
-from heard.tools.types import Ok, Rejected, Failed, ParamSpec
+from heard.tools.registry import REGISTRY, dispatch, known_tools, validate
+from heard.tools.types import Ok, ParamSpec, Rejected
 
 
 class TestREGISTRY:
@@ -29,10 +29,10 @@ class TestREGISTRY:
                 assert isinstance(pspec.required, bool), f"{name}.{pname}.required"
 
     def test_all_required_params_have_required_true(self):
-        for name, entry in REGISTRY.items():
-            for pname, pspec in entry.params.items():
-                # Params explicitly declared as required must be so
-                pass  # coverage sanity check
+        for _name, entry in REGISTRY.items():
+            for spec in entry.params.values():
+                if spec.required:
+                    assert spec.required is True
 
 
 class TestKnownTools:

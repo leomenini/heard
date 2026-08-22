@@ -2,8 +2,8 @@ from unittest import mock
 
 import pytest
 
+from heard.tools.types import Failed, Ok, Rejected
 from heard.tools.window import window_action
-from heard.tools.types import Ok, Rejected, Failed
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ class TestWindowAction:
         assert ["hyprctl", "dispatch", "closewindow", "active"] == run.call_args[0][0]
 
     def test_fullscreen(self, hyprland):
-        with mock.patch(hyprland) as run:
+        with mock.patch(hyprland):
             r = window_action("fullscreen")
         assert isinstance(r, Ok)
 

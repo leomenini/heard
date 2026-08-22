@@ -45,7 +45,7 @@ class TestSTT:
 
 class TestFindInputDevices:
     def test_no_devices(self, monkeypatch):
-        monkeypatch.setattr(stt, "list_devices", lambda: [])
+        monkeypatch.setattr(stt, "list_devices", list)
         with pytest.raises(RuntimeError, match="input group|/dev/input"):
             stt._find_input_devices(KEY_LEFTSHIFT, "KEY_LEFTSHIFT")
 
