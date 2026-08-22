@@ -69,11 +69,13 @@ class TestBackendDispatch:
         assert isinstance(r, Ok)
         assert ("windowclose", "944") == kdo.call_args[0]
 
-    def test_kde_fullscreen_unsupported(self, monkeypatch):
-        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "kde")
-        r = window_action("fullscreen")
-        assert isinstance(r, Failed)
-        assert "KDE" in r.reason
+    def test_kde_fullscreen_via_kwin_script(self, monkeypatch):
+        wm = "heard.tools.helpers.wm"
+        monkeypatch.setattr(f"{wm}.require", lambda: "kde")
+        with mock.patch(f"{wm}._kwin_run_script") as script:
+            r = window_action("fullscreen")
+        assert isinstance(r, Ok)
+        assert "fullScreen" in script.call_args[0][0]
 
     def test_no_wm_detected_fails_with_message(self, monkeypatch):
         monkeypatch.setattr("heard.tools.helpers.wm.detect", lambda: None)

@@ -1,6 +1,41 @@
 # Changelog
 
-## 1.3.0 — Unreleased
+## 1.4.0 — 2026-08-22
+
+**GNOME without unsafe mode**
+- Companion Shell extension (`packaging/gnome-shell/heard@heard`) exposes
+  window list, focus, close, fullscreen, and workspace switch over a
+  `dev.heard.WindowTools` D-Bus service — no unsafe mode required.
+- Two-tier transport in the WM abstraction: extension first (absence is
+  latched for zero steady-state cost), `Eval` fallback kept for unsafe-mode
+  shells; window ids unified on `get_stable_sequence`.
+- Install guide + manual QA checklist in `packaging/gnome-shell/README.md`.
+
+**KDE fullscreen**
+- Fullscreen toggle now supported on Plasma via a one-shot KWin script with
+  Plasma 5 / 6 runtime detection.
+
+**Local-first TTS**
+- `piper-tts` is the primary speech backend for query answers: local ONNX,
+  voice models downloaded once per language into `~/.cache/heard/piper`.
+- `gTTS` moved to the optional `[tts]` extra; auto chain is now
+  piper → gtts → flite → console.
+- New config key `tts_backend`: `""`(auto) | `piper` | `gtts` | `flite` |
+  `none`; README documents exactly what can touch the network.
+
+**Platform**
+- mypy adopted (`check_untyped_defs`, targeted import overrides); CI now
+  runs ruff + mypy + pytest; 10 type findings fixed incl. an IPC stop race.
+- Consistency pass: real package description, README version/test-count
+  drift fixed, public names for network helpers, relative imports in
+  `system_query`, `HoldController.is_busy()`/`cancel_pending()` replace
+  private-attribute pokes.
+- Fallback-speed spike: `scripts/export_fallback.py` + 
+  `reports/fallback_speed.md` — decoder re-forwards its full prefix every
+  token (no KV cache); KV-caching identified as the primary fix.
+- 299 tests.
+
+## 1.3.0 — 2026-08-22
 
 **GNOME support**
 - Added `gnome` to the window-manager abstraction.
@@ -9,7 +44,7 @@
 - Window listing, focus, close active, fullscreen toggle, and workspace switch
   are implemented through GNOME Shell's D-Bus `Eval` interface.
 
-## 1.2.0 — Unreleased
+## 1.2.0 — 2026-08-22
 
 **Screen recording**
 - New `screen_record` tool: `screenrecord start` / `screenrecord stop`.
@@ -20,7 +55,7 @@
 - Uses `wf-recorder` on Wayland, falls back to `ffmpeg -f x11grab` on X11.
 - State is tracked in a pidfile so `stop` finalises the file.
 
-## 1.1.0 — Unreleased
+## 1.1.0 — 2026-08-22
 
 **Query mode**
 - Transcripts starting with "Question" or "Pregunta" are sent to a configured

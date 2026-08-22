@@ -24,6 +24,8 @@ SPEECH_RMS_RATIO = 0.07            # frame is speech if rms > ratio * peak
 SPEECH_RMS_FLOOR = 3e-4            # ...and above this absolute floor
 POLL_S = 0.03
 
+_ptt_announced = False             # device banner prints once per process
+
 
 def _cpu_threads() -> int:
     try:
@@ -132,7 +134,9 @@ def _ptt_events(devs: list[InputDevice], code: int):
     try:
         while True:
             for key, _mask in sel.select():
-                for event in key.fileobj.read():
+                fileobj = key.fileobj
+                assert hasattr(fileobj, "read")  # registered InputDevices
+                for event in fileobj.read():
                     if event.type == ecodes.EV_KEY and event.code == code:
                         yield event
     finally:
@@ -379,6 +383,17 @@ class HoldController:
         self._worker = None
         return result
 
+    def is_busy(self) -> bool:
+        """True while a hold is recording (another trigger must not start one)."""
+        return self._session is not None
+
+    def cancel_pending(self) -> None:
+        """Release any in-flight hold without waiting for dispatch."""
+        if self._session is not None:
+            self._session.release.set()
+            if self._worker is not None:
+                self._worker.join(timeout=30)
+
 
 def capture_on_controller(controller: HoldController,
                           ptt_key: str = "KEY_LEFTSHIFT") -> CaptureResult:
@@ -396,15 +411,12 @@ def capture_on_controller(controller: HoldController,
             if event.value == 1:
                 if not controller.down():
                     continue                    # binding already recording
-            elif event.value == 0 and controller._session is not None:
+            elif event.value == 0 and controller.is_busy():
                 result = controller.up()
                 if result.text:
                     return result
     finally:
-        if controller._session is not None:
-            controller._session.release.set()
-            if controller._worker is not None:
-                controller._worker.join(timeout=30)
+        controller.cancel_pending()
 
     return CaptureResult("", 0.0, 0.0)
 
@@ -417,6 +429,3 @@ def capture(ptt_key: str = "KEY_LEFTSHIFT") -> CaptureResult:
 def capture_while_held(ptt_key: str = "KEY_LEFTSHIFT") -> str:
     """Compat wrapper: just the transcript."""
     return capture(ptt_key).text
-
-
-_ptt_announced = False

@@ -19,6 +19,7 @@ def window_action(action: str, target: str | None = None) -> Result:
             except NotImplementedError as e:
                 return Failed("window_action", str(e))
         else:
+            assert target is not None  # guarded at function entry
             wm.focus_by_token(target)
         return Ok("window_action", f"window {action}")
     except FileNotFoundError as e:

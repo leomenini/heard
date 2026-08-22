@@ -2,10 +2,12 @@ import re
 
 
 def format_bytes(n: int) -> str:
+    value = float(n)
     for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
-        if n < 1024 or unit == "TiB":
-            return f"{n:.1f} {unit}"
-        n /= 1024
+        if value < 1024 or unit == "TiB":
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    raise AssertionError("unreachable: TiB branch always returns")
 
 _PHYSICAL_DISK_RE = re.compile(
     r"^(?:sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)$"

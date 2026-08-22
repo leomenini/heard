@@ -9,7 +9,7 @@ class NetworkState(str, Enum):
     DISCONNECTED = "disconnected"
 
 
-def _has_active_interface() -> bool:
+def has_active_interface() -> bool:
     """Return True if any non-loopback interface is operational."""
 
     for iface in Path("/sys/class/net").iterdir():
@@ -26,7 +26,7 @@ def _has_active_interface() -> bool:
     return False
 
 
-def _has_internet(timeout: float = 1.5) -> bool:
+def has_internet(timeout: float = 1.5) -> bool:
     """Return True if the Internet is reachable."""
 
     endpoints = (

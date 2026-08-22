@@ -16,7 +16,7 @@ def _set_volume(action: str, amount: str | None, sink: str) -> Result:
         cmd = ["wpctl", "set-mute", sink, "0"]
     elif action == "set":
         try:
-            pct = int(amount)
+            pct = int(str(amount))
         except (TypeError, ValueError):
             return Rejected("volume_control",
                             f"invalid amount {amount!r}", "invalid_value")

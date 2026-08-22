@@ -381,9 +381,9 @@ def extract_percent(text: str) -> int | None:
     if m:
         n = int(m.group(1))
         return n if 0 <= n <= 100 else None
-    n = parse_spoken_number(text)
-    if n is not None and 0 <= n <= 100:
-        return n
+    spoken = parse_spoken_number(text)
+    if spoken is not None and 0 <= spoken <= 100:
+        return spoken
     m = re.search(r"\b(\d{1,3})\b", text)
     if m:
         n = int(m.group(1))

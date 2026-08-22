@@ -2,13 +2,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from heard.tools.helpers.network import (
-    NetworkState,
-    _has_active_interface,
-    _has_internet,
-)
-from heard.tools.helpers.system import format_bytes
-
+from .helpers.network import NetworkState, has_active_interface, has_internet
+from .helpers.system import format_bytes
 from .types import Failed, Ok, Rejected, Result
 
 
@@ -25,9 +20,9 @@ def _time():
 
 
 def _network() -> NetworkState:
-    if not _has_active_interface():
+    if not has_active_interface():
         return NetworkState.DISCONNECTED
-    if _has_internet():
+    if has_internet():
         return NetworkState.CONNECTED
     return NetworkState.LIMITED
 

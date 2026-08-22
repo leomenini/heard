@@ -62,8 +62,11 @@ class IpcServer:
 
     def _serve(self) -> None:
         while not self._stop.is_set():
+            sock = self._sock
+            if sock is None:                # stop() raced us
+                continue
             try:
-                conn, _ = self._sock.accept()
+                conn, _ = sock.accept()
             except (OSError, TimeoutError):
                 continue
             with conn:

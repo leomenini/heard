@@ -1,0 +1,7 @@
+{
+    "uuid": "heard@heard",
+    "name": "heard window tools",
+    "description": "D-Bus bridge for the heard voice daemon: list, focus, close, fullscreen, and workspace-switch windows without GNOME Shell unsafe mode.",
+    "url": "https://github.com/anomalyco/heard",
+    "shell-version": ["45", "46", "47", "48", "49"]
+}

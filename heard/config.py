@@ -25,6 +25,7 @@ DEFAULTS: dict[str, str | bool] = {
     "llm_api_key": "",           # Bearer token for llm_url
     "llm_model": "",             # e.g. gpt-4o-mini; required by most endpoints
     "tts_enabled": True,         # speak LLM answers out loud
+    "tts_backend": "",           # ""(auto) | piper | gtts | flite | none
     "screenrecord_output": "",   # default display output (e.g. DP-1)
     "screenrecord_outputs": "",  # label map: One=DP-1,Two=HDMI-1
     "screenrecord_folder": "~/Videos",
@@ -32,6 +33,7 @@ DEFAULTS: dict[str, str | bool] = {
 
 VALID_LANGUAGE = ("en", "es")
 VALID_WM_BACKEND = ("auto", "hyprland", "sway", "kde", "gnome")
+VALID_TTS_BACKEND = ("", "auto", "piper", "gtts", "flite", "none")
 
 
 def config_path() -> Path:
@@ -68,12 +70,15 @@ def set_key(key: str, value: str) -> None:
         raise ValueError(f"language must be one of {VALID_LANGUAGE}")
     if key == "wm_backend" and value not in VALID_WM_BACKEND:
         raise ValueError(f"wm_backend must be one of {VALID_WM_BACKEND}")
+    if key == "tts_backend" and value not in VALID_TTS_BACKEND:
+        raise ValueError(f"tts_backend must be one of {VALID_TTS_BACKEND}")
     path = config_path()
     raw: dict = {}
     if path.is_file():
         with open(path, "rb") as f:
             raw = tomllib.load(f)
     default_type = type(DEFAULTS[key])
+    parsed: str | bool
     if default_type is bool:
         parsed = value.strip().lower() in ("true", "1", "yes")
     else:

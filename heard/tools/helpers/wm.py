@@ -3,6 +3,11 @@
 Detection order: config `wm_backend` override, then environment
 (HYPRLAND_INSTANCE_SIGNATURE / SWAYSOCK / KDE / GNOME markers). Every command
 raises on failure -- handlers translate that into Failed/Rejected results.
+
+GNOME is tiered: the companion Shell extension (packaging/gnome-shell) is
+tried first via its dev.heard.WindowTools D-Bus service; if it is absent we
+fall back to org.gnome.Shell.Eval, which only works when the shell runs in
+unsafe mode (GNOME 41+).
 """
 
 import json
@@ -111,18 +116,50 @@ def _sway_list() -> list[Window]:
 
 _GNOME_SHELL = DBusAddress("/org/gnome/Shell", bus_name="org.gnome.Shell",
                            interface="org.gnome.Shell")
+_GNOME_SERVICE = DBusAddress("/dev/heard/WindowTools",
+                             bus_name="dev.heard.WindowTools",
+                             interface="dev.heard.WindowTools")
+_GNOME_TIMEOUT_S = 1.0
+
+_gnome_extension_dead = False   # latched when the extension is found absent
 
 
-def _gnome_eval(js: str) -> str:
-    """Run JS inside GNOME Shell via D-Bus Eval; return its string result."""
+def _dbus_session_connection():
+    """Session bus, reusing the MPRIS module's persistent connection."""
     from jeepney.io.blocking import open_dbus_connection
 
     try:
         from .. import media
 
-        conn = media._connection()
+        return media._connection()
     except Exception:
-        conn = open_dbus_connection()
+        return open_dbus_connection()
+
+
+def _gnome_call(method: str, signature: str | None = None,
+                body=None) -> str:
+    """Call the companion Shell extension; return its string out-arg.
+
+    Raises whenever the extension is not on the bus so callers fall back to
+    Eval. The first failure latches for the daemon lifetime -- steady state
+    then costs no timeout at all. Restart heard after enabling the extension.
+    """
+    global _gnome_extension_dead
+    if _gnome_extension_dead:
+        raise RuntimeError("heard window-tools extension unavailable")
+    conn = _dbus_session_connection()
+    reply = conn.send_message(new_method_call(_GNOME_SERVICE, method,
+                                              signature, body),
+                              timeout=_GNOME_TIMEOUT_S)
+    if reply is None or reply.message_type == 4:  # error
+        _gnome_extension_dead = True
+        raise RuntimeError("heard window-tools extension call failed")
+    return str(reply.body[0]) if reply.body else ""
+
+
+def _gnome_eval(js: str) -> str:
+    """Run JS inside GNOME Shell via D-Bus Eval (unsafe-mode fallback)."""
+    conn = _dbus_session_connection()
     reply = conn.send_message(new_method_call(_GNOME_SHELL, "Eval", "s", (js,)),
                               timeout=_DBUS_TIMEOUT_S)
     if reply is None or reply.message_type == 4:  # error
@@ -133,20 +170,35 @@ def _gnome_eval(js: str) -> str:
     return result
 
 
-def _gnome_list() -> list[Window]:
-    js = (
-        "JSON.stringify(global.get_window_actors().map(a => ({"
-        "id: a.meta_window.get_id(),"
-        "cls: a.meta_window.get_wm_class() || '',"
-        "title: a.meta_window.get_title() || ''"
-        "})))"
-    )
-    out = _gnome_eval(js)
+# Eval snippets report ids like the extension does: stable_sequence where
+# available, get_id() on shells that lack it.
+_ID_EXPR = ("(typeof w.get_stable_sequence === 'function' "
+            "? w.get_stable_sequence() : w.get_id())")
+
+_GNOME_LIST_JS = (
+    "JSON.stringify(global.get_window_actors().map(a => {"
+    "let w = a.meta_window;"
+    f"return {{id: {_ID_EXPR},"
+    "cls: w.get_wm_class() || '',"
+    "title: w.get_title() || ''}};}))"
+)
+
+
+def _windows_from_json(raw: str) -> list[Window]:
+    """Parse the shared [{id, cls, title}] payload used by both GNOME tiers."""
     windows = []
-    for item in json.loads(out) if out.strip() else []:
+    for item in json.loads(raw) if raw and raw.strip() else []:
         windows.append(Window(str(item["id"]), str(item.get("cls", "")),
                               str(item.get("title", ""))))
     return windows
+
+
+def _gnome_list() -> list[Window]:
+    try:
+        raw = _gnome_call("ListWindows")
+    except Exception:
+        raw = _gnome_eval(_GNOME_LIST_JS)
+    return _windows_from_json(raw)
 
 
 # --- KDE -------------------------------------------------------------------
@@ -156,15 +208,7 @@ _KWIN_SCRIPTING = DBusAddress("/KWin", bus_name="org.kde.KWin",
 
 
 def _dbus_call(address: DBusAddress, method: str, signature=None, body=None):
-    from jeepney.io.blocking import open_dbus_connection
-
-    try:
-        # reuse the persistent session-bus connection cached by the MPRIS module
-        from .. import media
-
-        conn = media._connection()
-    except Exception:
-        conn = open_dbus_connection()
+    conn = _dbus_session_connection()
     reply = conn.send_message(new_method_call(address, method, signature, body),
                               timeout=_DBUS_TIMEOUT_S)
     if reply is None or reply.message_type == 4:  # error
@@ -228,10 +272,22 @@ def close_active() -> None:
     elif backend == "sway":
         _run(["swaymsg", "kill"])
     elif backend == "gnome":
-        _gnome_eval("global.display.focus_window.delete(0); 'done'")
+        try:
+            _gnome_call("Close", "s", ("active",))
+        except Exception:
+            _gnome_eval("global.display.focus_window.delete(0); 'done'")
     else:
         active = _kde_kdotool("getactivewindow")
         _kde_kdotool("windowclose", active)
+
+
+_KDE_FULLSCREEN_SCRIPT = (
+    "if (workspace.activeWindow) {"                  # Plasma 6
+    " workspace.activeWindow.fullScreen = !workspace.activeWindow.fullScreen;"
+    "} else if (workspace.activeClient) {"           # Plasma 5
+    " workspace.activeClient.fullScreen = !workspace.activeClient.fullScreen;"
+    "}"
+)
 
 
 def toggle_fullscreen() -> None:
@@ -241,13 +297,15 @@ def toggle_fullscreen() -> None:
     elif backend == "sway":
         _run(["swaymsg", "fullscreen", "toggle"])
     elif backend == "gnome":
-        _gnome_eval(
-            "let w = global.display.focus_window;"
-            "w.fullscreen ? w.unfullscreen() : w.fullscreen(); 'done'"
-        )
+        try:
+            _gnome_call("ToggleFullscreen")
+        except Exception:
+            _gnome_eval(
+                "let w = global.display.focus_window;"
+                "w.fullscreen ? w.unfullscreen() : w.fullscreen(); 'done'"
+            )
     else:
-        raise NotImplementedError(
-            "fullscreen toggling is not supported on KDE yet")
+        _kwin_run_script(_KDE_FULLSCREEN_SCRIPT)
 
 
 def focus_address(address: str) -> None:
@@ -257,11 +315,15 @@ def focus_address(address: str) -> None:
     elif backend == "sway":
         _run(["swaymsg", f"[con_id={address}]", "focus"])
     elif backend == "gnome":
-        _gnome_eval(
-            f"let wins = global.get_window_actors().map(a => a.meta_window);"
-            f"let w = wins.find(w => w.get_id() === {address});"
-            f"if (w) w.activate(0); 'done'"
-        )
+        aid = int(address)
+        try:
+            _gnome_call("Activate", "i", (aid,))
+        except Exception:
+            _gnome_eval(
+                f"let wins = global.get_window_actors().map(a => a.meta_window);"
+                f"let w = wins.find(w => {_ID_EXPR} === {aid});"
+                f"if (w) w.activate(0); 'done'"
+            )
     else:
         _kde_kdotool("windowactivate", address)
 
@@ -288,9 +350,12 @@ def switch_workspace(n: int) -> None:
     elif backend == "sway":
         _run(["swaymsg", "workspace", "number", str(n)])
     elif backend == "gnome":
-        _gnome_eval(
-            f"global.workspace_manager.get_workspace_by_index({n - 1}).activate(0);"
-            f" 'done'"
-        )
+        try:
+            _gnome_call("SetWorkspace", "i", (n,))
+        except Exception:
+            _gnome_eval(
+                f"global.workspace_manager.get_workspace_by_index({n - 1}).activate(0);"
+                f" 'done'"
+            )
     else:
         _kwin_run_script(f"workspace.currentDesktop = {n};")

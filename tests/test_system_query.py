@@ -16,7 +16,7 @@ class TestSystemQuery:
         assert isinstance(r.detail, str)
 
     def test_network(self):
-        with mock.patch("heard.tools.system_query._has_active_interface", return_value=False):
+        with mock.patch("heard.tools.system_query.has_active_interface", return_value=False):
             r = system_query("network")
             assert isinstance(r, Ok)  # returns disconnected state as Ok
             assert "DISCONNECTED" in r.detail

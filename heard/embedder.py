@@ -156,7 +156,7 @@ def resolve_encoder(needle_triple=None):
             # Tuned on scripts/benchmark_latency.py fast-path probe:
             # needle's finetuned head is high-confidence but can over-accept
             # off-topic queries, so it needs a higher floor than fastembed.
-            encode.accept_score = 0.85
+            encode.accept_score = 0.85  # type: ignore[attr-defined]
             return encode
         if mode == "needle":
             raise RuntimeError(

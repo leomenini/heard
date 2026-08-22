@@ -9,7 +9,7 @@
 
 hear + d. It's the joke `sshd` would make if it could. Reads as an English word, is exactly what the daemon does, and `heard: launching spotify` in a log line is funny.
 
-> **v1.0.** `heard listen` is both the foreground loop and the daemon: run it directly, or install the systemd unit and drive holds from compositor keybindings. Ctrl-C stops the foreground loop.
+> **v1.3.** `heard listen` is both the foreground loop and the daemon: run it directly, or install the systemd unit and drive holds from compositor keybindings. Ctrl-C stops the foreground loop.
 
 ---
 
@@ -85,8 +85,12 @@ hold means this is only the post-pause remainder), then intent and dispatch.
 The trailing tag marks fast-path accepts with their cosine score; its absence
 means the generative fallback ran.
 
-Requirements: a microphone, PipeWire (`wpctl`) + Hyprland (`hyprctl`) for the
-tools that shell out, and membership in the `input` group for key capture.
+Requirements: a microphone, PipeWire (`wpctl`), and membership in the `input`
+group for key capture. Window/workspace tools use one of four backends
+(Hyprland, Sway, KDE, GNOME) detected from the session. On GNOME, install the
+tiny companion Shell extension — [`packaging/gnome-shell/`](packaging/gnome-shell/)
+— since stock shells disallow D-Bus Eval; without it heard falls back to Eval,
+which only works in unsafe mode.
 First run downloads Whisper + MiniLM weights (~200MB total) into local caches.
 
 ---
@@ -128,7 +132,14 @@ heard routes spoken commands to tool calls. That is a classification problem, no
 
 **Speed.** A larger LLM adds seconds of latency on consumer hardware. Generation is now the *fallback*, not the path: the common command resolves through embedding classification and slot lookup in well under 100ms; only ambiguous phrasings pay the ~6.5s decode. The bundled checkpoint's contrastive head was decayed to zero by pretraining, so the embeddings come from an int8 ONNX MiniLM instead (`embedder.py` picks this automatically; `HEARD_EMBEDDER=needle|fastembed` forces one).
 
-**Local-first.** No cloud APIs, no network round trip, no special hardware. Everything runs on a laptop CPU. The only feature that will ever touch the network is the optional `answer_query` fallback (v1), explicitly opt-in.
+**Local-first.** No cloud APIs, no network round trip, no special hardware. Everything runs on a laptop CPU. The only always-on path is fully offline; the features below are the complete, explicit list of what can touch the network:
+
+| Feature | Network? | Notes |
+|---|---|---|
+| STT / intent / dispatch | never | models load from local caches |
+| TTS (query answers) | only if piper voice not yet cached | piper runs locally; `gtts` extra is online and off by default; `tts_backend = flite` is fully offline |
+| `question ...` query mode | yes (opt-in) | requires configuring `llm_url` yourself |
+| model downloads | first run only | Whisper + MiniLM + piper voices (~200MB total) into local caches |
 
 **Specialization.** A 7B+ general-purpose model dedicates most of its capacity to knowledge and dialogue. Needle is trained specifically for function-call extraction; tool descriptions steer it (tightening them alone moved probe accuracy 75% → 92%). It is not a chat model and never answers questions — open-ended input is declined in milliseconds by the classifier's unknown centroid, not sent anywhere.
 
@@ -178,8 +189,9 @@ The dispatcher never passes raw model output to a shell. Arguments are validated
 | `ptt_key` | `"KEY_LEFTSHIFT"` | any evdev `KEY_*` name |
 | `embedder_model` | auto per language | explicit fastembed model override |
 | `stt_model_size` | `"base"` | faster-whisper size (`tiny`/`base`/`small`) |
-| `wm_backend` | `"auto"` | `auto` \| `hyprland` \| `sway` \| `kde` (KDE windows via kdotool, workspaces via KWin scripting) |
+| `wm_backend` | `"auto"` | `auto` \| `hyprland` \| `sway` \| `kde` \| `gnome` (KDE windows via kdotool, workspaces/fullscreen via KWin scripting; GNOME via the companion Shell extension) |
 | `events` | `true` | local JSONL usage log |
+| `tts_backend` | auto | `""`(auto: piper→gtts→flite) \| `piper` \| `gtts` \| `flite` \| `none` — spoken answers for query mode |
 
 Env vars override config for tuning and debugging:
 
@@ -203,7 +215,7 @@ Tune thresholds from benchmark output, not feel — misaccepts are the hard gate
 ```
 heard/
 ├── pyproject.toml               # entry point: uv run heard listen
-├── .github/workflows/test.yml   # CI: ruff + pytest on push/PR
+├── .github/workflows/test.yml   # CI: ruff + mypy + pytest on push/PR
 ├── heard/
 │   ├── cli.py                   # warmup, preflight, loop, hold bindings, stage timings
 │   ├── stt.py                   # capture bus, streaming hold STT, VAD trim
@@ -230,12 +242,15 @@ heard/
 │           ├── network.py       # connectivity checks
 │           └── system.py        # format_bytes etc.
 ├── packaging/systemd/heard.service
-├── tests/                       # 234 tests across 21 files
+├── packaging/gnome-shell/heard@heard/  # companion Shell extension: D-Bus window tools
+├── tests/                       # 299 tests across 26 files
 ├── checkpoints/                 # gitignored — needle weights
 ├── scripts/
-│   └── benchmark_latency.py     # per-stage probes: --only intent|stt|dispatch|needle [--audio clip.wav]
+│   ├── benchmark_latency.py     # per-stage probes: --only intent|stt|dispatch|needle [--audio clip.wav]
+│   └── export_fallback.py       # fallback-speed spike: step profile + ONNX attempt
 └── reports/
-    └── latency.md               # measured numbers + threshold tuning tables
+    ├── latency.md               # measured numbers + threshold tuning tables
+    └── fallback_speed.md        # generative-tail investigation notes
 ```
 
 ---
@@ -243,7 +258,7 @@ heard/
 ## Testing & benchmarking
 
 ```bash
-uv run pytest                                            # 180 tests
+uv run pytest                                            # 299 tests
 uv run python scripts/benchmark_latency.py --only intent # fast vs generative + tail split
 uv run python scripts/benchmark_latency.py --only stt    # audio finalize + whisper
 uv run python scripts/benchmark_latency.py --only dispatch
@@ -267,7 +282,7 @@ uv run python scripts/benchmark_latency.py --audio cmd.wav
 - Bilingual EN/ES only; more languages need prototypes + a multilingual embedder entry (mechanism exists).
 - The bundled Needle checkpoint has an untrained contrastive head — the fast path therefore depends on fastembed (one-time model download). A retrieval-finetuned checkpoint would flip `HEARD_EMBEDDER=needle` back on.
 - Generative fallback costs seconds (fp32 JAX decode); fine at 5–15% traffic, painful above it.
-- KDE fullscreen toggle not yet supported (close/focus/workspaces are); Sway and Hyprland fully supported.
+- GNOME needs the companion Shell extension for full support; without it only unsafe-mode shells work (Eval fallback).
 
 ---
 
@@ -276,9 +291,8 @@ uv run python scripts/benchmark_latency.py --audio cmd.wav
 | Area | What lands |
 |---|---|
 | **Responder** | Floating GTK popup + local TTS (piper/espeak-ng) over the existing unix socket |
-| **Fallback speed** | Schema prefix-cache or GGUF port to take the 6.5s tail to hundreds of ms |
+| **Fallback speed** | KV-cache + ONNX spike: [`reports/fallback_speed.md`](reports/fallback_speed.md), run via `scripts/export_fallback.py` |
 | **Languages** | More languages via the existing prototype + multilingual-embedder mechanism |
 | **Analytics** | Daily rollups over the JSONL log; retrain pipeline (failures → finetune data) |
-| **KDE fullscreen** | KWin-script based fullscreen toggle (close/focus/workspaces already work) |
 
 The model stays 26M Needle at the core. Later releases add feedback surfaces, a faster fallback tail, and broader language coverage.

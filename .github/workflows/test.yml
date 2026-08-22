@@ -28,5 +28,8 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
+      - name: Type check
+        run: uv run mypy heard
+
       - name: Run tests
         run: uv run pytest -v --tb=short --cov=heard --cov-report=term
