@@ -16,7 +16,14 @@ def _fmt_call(call: dict) -> str:
 def listen():
     """Start the voice-control loop: hold the PTT key, speak, release."""
     from . import stt, intent, config
+    from .lock import SingleInstance
     from .tools import registry
+
+    lock = SingleInstance()
+    holder = lock.acquire()
+    if holder is not None:
+        typer.secho(f"heard: already running (pid {holder})", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
 
     cfg = config.load()
     ptt_key = str(cfg["ptt_key"])
@@ -67,6 +74,8 @@ def listen():
     except RuntimeError as e:
         typer.secho(f"heard: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
+    finally:
+        lock.release()
 
 
 @config_app.command()

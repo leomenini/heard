@@ -138,7 +138,8 @@ class TestDispatch:
         assert isinstance(r, Ok)
         assert r.tool == "system_query"
 
-    @mock.patch("heard.tools.workspace.subprocess.run")
+    @mock.patch("heard.tools.helpers.wm._run")
+    @mock.patch("heard.tools.helpers.wm.require", lambda: "hyprland")
     def test_valid_workspace_switch(self, mock_run):
         r = dispatch({"name": "workspace_switch", "arguments": {"workspace": "3"}})
         assert isinstance(r, Ok)

@@ -140,6 +140,7 @@ The dispatcher never passes raw model output to a shell. Arguments are validated
 | `ptt_key` | `"KEY_LEFTSHIFT"` | any evdev `KEY_*` name |
 | `embedder_model` | auto per language | explicit fastembed model override |
 | `stt_model_size` | `"base"` | faster-whisper size (`tiny`/`base`/`small`) |
+| `wm_backend` | `"auto"` | `auto` \| `hyprland` \| `sway` \| `kde` (KDE windows via kdotool, workspaces via KWin scripting) |
 | `events` | `true` | local JSONL usage log |
 
 Env vars override config for tuning and debugging:
@@ -217,7 +218,7 @@ uv run python scripts/benchmark_latency.py --audio cmd.wav
 - Bilingual EN/ES only; more languages need prototypes + a multilingual embedder entry (mechanism exists).
 - The bundled Needle checkpoint has an untrained contrastive head — the fast path therefore depends on fastembed (one-time model download). A retrieval-finetuned checkpoint would flip `HEARD_EMBEDDER=needle` back on.
 - Generative fallback costs seconds (fp32 JAX decode); fine at 5–15% traffic, painful above it.
-- WM tools assume Hyprland; Sway/KDE backends are next.
+- KDE fullscreen toggle not yet supported (close/focus/workspaces are); Sway and Hyprland fully supported.
 
 ---
 

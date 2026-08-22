@@ -1,5 +1,6 @@
 import subprocess
 
+from .helpers import wm
 from .types import Failed, Ok, Rejected, Result
 
 
@@ -12,10 +13,15 @@ def workspace_switch(workspace: str) -> Result:
     if not 1 <= n <= 10:
         return Rejected("workspace_switch", f"workspace {n} out of range (1-10)", "invalid_value")
 
-    cmd = ["hyprctl", "dispatch", "workspace", str(n)]
     try:
-        subprocess.run(cmd, check=True)
-    except FileNotFoundError:
-        return Failed("workspace_switch", f"{cmd[0]} not found")
+        wm.switch_workspace(n)
+    except FileNotFoundError as e:
+        name = getattr(e, "filename", None)
+        return Failed("workspace_switch", f"{name or 'required binary'} not found")
+    except subprocess.CalledProcessError as e:
+        binary = e.cmd[0] if getattr(e, "cmd", None) else "backend command"
+        return Failed("workspace_switch", f"{binary} exited {e.returncode}")
+    except (RuntimeError, OSError) as e:
+        return Failed("workspace_switch", str(e))
 
     return Ok("workspace_switch", f"workspace {n}")

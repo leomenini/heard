@@ -1,50 +1,21 @@
-import json
-import re
 import subprocess
 
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz
 
+from .helpers import wm
 from .helpers.apps import app_exists, installed_apps, resolve_app
 from .types import Ok, Rejected, Result
 
 
-def _norm(s: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
-
-
-def _running_windows() -> dict[str, str]:
-    """address -> searchable label for every open Hyprland window."""
-    try:
-        out = subprocess.run(["hyprctl", "clients", "-j"], capture_output=True,
-                             text=True, timeout=2)
-        if out.returncode != 0:
-            return {}
-        clients = json.loads(out.stdout)
-    except Exception:
-        return []
-    windows: dict[str, str] = {}
-    for w in clients if isinstance(clients, list) else []:
-        addr = w.get("address")
-        label = _norm(" ".join(filter(None, (
-            w.get("class"), w.get("initialClass"),
-            w.get("title"), w.get("initialTitle"),
-        ))))
-        if addr and label:
-            windows[addr] = label
-    return windows
-
-
-def _find_window(queries: list[str], windows: dict[str, str]) -> str | None:
+def _find_window(queries: list[str], windows: list[wm.Window]) -> str | None:
     """Fuzzy-match spoken phrase / binary against open windows."""
-    if not windows:
-        return None
     best_addr, best_score = None, 0.0
-    for addr, label in windows.items():
+    for w in windows:
         for q in queries:
-            score = max(fuzz.token_set_ratio(_norm(q), label),
-                        fuzz.partial_ratio(_norm(q), label))
+            score = max(fuzz.token_set_ratio(q.lower(), w.label()),
+                        fuzz.partial_ratio(q.lower(), w.label()))
             if score > best_score:
-                best_addr, best_score = addr, score
+                best_addr, best_score = w.address, score
     return best_addr if best_score >= 80 else None
 
 
@@ -63,10 +34,10 @@ def launch_app(app: str) -> Result:
     # already running? focus it instead of spawning a second instance
     queries = [q for q in (app, binary, _display_name(binary)) if q]
     try:
-        addr = _find_window(queries, _running_windows())
+        windows = wm.list_windows()
+        addr = _find_window(queries, windows)
         if addr is not None:
-            subprocess.run(["hyprctl", "dispatch", "focuswindow", addr],
-                           check=True, timeout=2)
+            wm.focus_address(addr)
             return Ok("launch_app", f"focused running {binary}")
     except FileNotFoundError:
         pass

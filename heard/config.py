@@ -17,10 +17,12 @@ DEFAULTS: dict[str, str | bool] = {
     "ptt_key": "KEY_LEFTSHIFT",
     "embedder_model": "",        # empty = auto per language
     "stt_model_size": "base",    # tiny | base | small
+    "wm_backend": "auto",        # auto | hyprland | sway | kde
     "events": True,              # append local JSONL usage log
 }
 
 VALID_LANGUAGE = ("en", "es")
+VALID_WM_BACKEND = ("auto", "hyprland", "sway", "kde")
 
 
 def config_path() -> Path:
@@ -55,6 +57,8 @@ def set_key(key: str, value: str) -> None:
         raise KeyError(f"unknown config key {key!r}; valid: {sorted(DEFAULTS)}")
     if key == "language" and value not in VALID_LANGUAGE:
         raise ValueError(f"language must be one of {VALID_LANGUAGE}")
+    if key == "wm_backend" and value not in VALID_WM_BACKEND:
+        raise ValueError(f"wm_backend must be one of {VALID_WM_BACKEND}")
     path = config_path()
     raw: dict = {}
     if path.is_file():
