@@ -180,7 +180,7 @@ heard routes spoken commands to tool calls. That is a classification problem, no
 | `volume_control` | `tools/volume.py` | Up, down, mute, set percent: percentages parsed from speech ("fifty", "65%", "half") |
 | `microphone_control` | `tools/microphone.py` | Mute or unmute the default microphone source via wpctl |
 | `screen_record` | `tools/screen_record.py` | Start/stop screen recording; wf-recorder on Wayland, ffmpeg x11grab fallback. Spoken screen labels map to outputs via config; files land in `screenrecord_folder` |
-| `window_action` | `tools/window.py` | Close, fullscreen, focus via the WM backend; focus targets fuzzy-match open windows (generative parsing for targets) |
+| `window_action` | `tools/window.py` | Close, fullscreen, minimize, focus via the WM backend; minimize is x11-only (Muffin ignores the EWMH hidden state, so the iconify request goes out as ICCCM WM_CHANGE_STATE through python-xlib); focus targets fuzzy-match open windows (generative parsing for targets) |
 | `workspace_switch` | `tools/workspace.py` | Switch by number, digits or words ("workspace three") |
 | `system_query` | `tools/system_query.py` | Battery, time, network, disk status |
 

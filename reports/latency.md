@@ -82,6 +82,23 @@ cliff is sharp. Both failures at 0.25 are the same shape: a sentence
 list` -> `launch_app`). These are fastembed geometry numbers and do not
 transfer to a trained Needle head.
 
+## Minimize centroid
+
+Motivated by a real misaccept on Cinnamon/X11: "minimizar ventana actual"
+resolved to `window_action:close` at 0.69 (destructive) because no minimize
+centroid existed. After adding one (8 bilingual prototypes), fastembed
+MiniLM multilingual:
+
+| probe set | result |
+|---|---|
+| held-out minimize phrasings (4, none in PROTOTYPES) | all -> minimize, scores 0.649–0.954 |
+| the former misaccept phrase | close 0.69 -> **minimize 0.935** |
+| close regression (4 phrases EN+ES) | all -> close, 0.814–0.956 |
+| off-topic | **0 misaccepts** |
+
+("cuánto falta para las cinco" resolves to `system_query:time`, which is the
+correct dispatch, not a misaccept.)
+
 ## Generative Needle probes
 
 See the CONSTRAINED / UNCONSTRAINED sections of the benchmark output; paste a

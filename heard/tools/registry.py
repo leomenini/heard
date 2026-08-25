@@ -77,13 +77,14 @@ REGISTRY: dict[str, Entry] = {
     "window_action": Entry(
         fn=window_action,
         description=(
-            "Act on an already-open window: close it, focus it, or make it "
-            "fullscreen. Also used to quit or kill a running application."
+            "Act on an already-open window: close it, focus it, minimize it, "
+            "or make it fullscreen. Also used to quit or kill a running "
+            "application."
         ),
         params={
             "action": ParamSpec(
                 required=True,
-                enum=frozenset({"close", "focus", "fullscreen"}),
+                enum=frozenset({"close", "focus", "fullscreen", "minimize"}),
             ),
             "target": ParamSpec(required=False),
         },

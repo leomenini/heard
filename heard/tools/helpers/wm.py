@@ -293,6 +293,43 @@ def _x11_list() -> list[Window]:
     return windows
 
 
+def _x11_minimize() -> None:
+    """Iconify the active window via the ICCCM WM_CHANGE_STATE message.
+
+    Muffin (Cinnamon) ignores the EWMH _NET_WM_STATE_HIDDEN client message
+    that `wmctrl -b add,hidden` sends, but honors WM_CHANGE_STATE=Iconic --
+    the same request taskbars and xdotool send. python-xlib is imported
+    lazily; a missing install surfaces as RuntimeError so the tool handler
+    reports Failed instead of raising into dispatch.
+    """
+    try:
+        from Xlib import X
+        from Xlib import display as xdisplay
+        from Xlib.protocol import event as xevent
+    except ImportError as e:
+        raise RuntimeError(f"python-xlib is required for minimize on x11: {e}") from e
+
+    d = xdisplay.Display()
+    try:
+        root = d.screen().root
+        prop = root.get_full_property(d.intern_atom("_NET_ACTIVE_WINDOW"),
+                                      X.AnyPropertyType)
+        wid = int(prop.value[0]) if prop is not None and len(prop.value) else 0
+        if not wid:
+            raise RuntimeError("no active window to minimize")
+        msg = xevent.ClientMessage(
+            window=wid,
+            client_type=d.intern_atom("WM_CHANGE_STATE"),
+            sequence_number=0,
+            data=(32, [3, 0, 0, 0, 0]),       # 3 == IconicState
+        )
+        root.send_event(msg, event_mask=X.SubstructureRedirectMask
+                        | X.SubstructureNotifyMask)
+        d.flush()
+    finally:
+        d.close()
+
+
 # --- Public API ------------------------------------------------------------
 
 def _unsupported(backend: str) -> RuntimeError:
@@ -363,6 +400,17 @@ def toggle_fullscreen() -> None:
         _kwin_run_script(_KDE_FULLSCREEN_SCRIPT)
     else:
         raise _unsupported(backend)
+
+
+def minimize_active() -> None:
+    backend = require()
+    if backend == "x11":
+        _x11_minimize()
+        return
+    # Deliberately unimplemented elsewhere: tiling compositors have no
+    # minimize concept, and the richer backends are left honest rather
+    # than faked through a generic fallback.
+    raise _unsupported(backend)
 
 
 def focus_address(address: str) -> None:

@@ -5,7 +5,7 @@ from .types import Failed, Ok, Rejected, Result
 
 
 def window_action(action: str, target: str | None = None) -> Result:
-    if action not in ("close", "focus", "fullscreen"):
+    if action not in ("close", "focus", "fullscreen", "minimize"):
         return Rejected("window_action", f"bad action {action!r}", "invalid_value")
     if action == "focus" and target is None:
         return Rejected("window_action", "focus needs a target", "bad_args")
@@ -18,6 +18,8 @@ def window_action(action: str, target: str | None = None) -> Result:
                 wm.toggle_fullscreen()
             except NotImplementedError as e:
                 return Failed("window_action", str(e))
+        elif action == "minimize":
+            wm.minimize_active()
         else:
             assert target is not None  # guarded at function entry
             wm.focus_by_token(target)

@@ -52,6 +52,37 @@ class TestWindowAction:
             r = window_action("close")
         assert isinstance(r, Failed)
 
+    def test_minimize(self, monkeypatch):
+        """Minimize is x11-only; the happy path goes through _x11_minimize."""
+        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "x11")
+        with mock.patch("heard.tools.helpers.wm._x11_minimize") as mini:
+            r = window_action("minimize")
+        assert isinstance(r, Ok)
+        assert r.detail == "window minimize"
+        mini.assert_called_once()
+
+    def test_minimize_unsupported_backend_fails(self, monkeypatch):
+        """hyprland has no minimize: the handler reports Failed, not a crash."""
+        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "hyprland")
+        monkeypatch.setattr(
+            "heard.tools.helpers.wm._unsupported",
+            lambda b: RuntimeError(f"unsupported wm backend {b!r}"),
+        )
+        r = window_action("minimize")
+        assert isinstance(r, Failed)
+        assert "unsupported" in r.reason
+
+    def test_minimize_missing_dependency_fails(self, monkeypatch, tmp_path):
+        """python-xlib absent on x11: RuntimeError -> Failed, never raises."""
+        monkeypatch.setattr("heard.tools.helpers.wm.require", lambda: "x11")
+        monkeypatch.setattr(
+            "heard.tools.helpers.wm._x11_minimize",
+            mock.Mock(side_effect=RuntimeError("python-xlib is required")),
+        )
+        r = window_action("minimize")
+        assert isinstance(r, Failed)
+        assert "python-xlib" in r.reason
+
 
 class TestBackendDispatch:
     def test_sway_close(self, monkeypatch):

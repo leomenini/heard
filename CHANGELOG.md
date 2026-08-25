@@ -10,6 +10,11 @@
 - `launch_app` falls back to a plain spawn where `uwsm` is absent (X11
   desktops) instead of declining.
 - Screen recording grabs `$DISPLAY` instead of assuming `:0.0`.
+- `window_action` gains `minimize`, implemented for the x11 backend via an
+  ICCCM `WM_CHANGE_STATE` client message (python-xlib): Muffin ignores the
+  EWMH hidden state that wmctrl sends, so the taskbar-style request is the
+  one that actually iconifies on Cinnamon. Other backends decline honestly
+  rather than mapping minimize onto close.
 
 **Weightless degradation**
 - A missing Needle checkpoint no longer kills warmup or mid-command dispatch:

@@ -59,6 +59,9 @@ class TestKnownTools:
         vol = next(t for t in tools if t["name"] == "volume_control")
         assert vol["parameters"]["action"]["enum"] == sorted(
             ["up", "down", "mute", "unmute", "set"])
+        win = next(t for t in tools if t["name"] == "window_action")
+        assert win["parameters"]["action"]["enum"] == sorted(
+            ["close", "focus", "fullscreen", "minimize"])
 
 
 class TestValidate:

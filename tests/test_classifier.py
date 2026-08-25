@@ -113,6 +113,22 @@ class TestClassifierVerdicts:
         assert v.tool_call["name"] == "window_action"
         assert v.tool_call["arguments"]["action"] == "close"
 
+    def test_minimize_prototype_classifies(self, classifier):
+        v = classifier.match("minimiza esta ventana")
+        assert v.tool_call == {"name": "window_action",
+                               "arguments": {"action": "minimize"}}
+
+    def test_minimize_heldout_phrasing(self, classifier):
+        """A phrasing absent from PROTOTYPES must still land on minimize."""
+        v = classifier.match("minimizá la ventana de la terminal")
+        assert v.tool_call["arguments"]["action"] == "minimize"
+
+    def test_close_not_absorbed_by_minimize(self, classifier):
+        """The minimize centroid must not steal destructive-close traffic."""
+        for q in ("cierra esta ventana", "close this window"):
+            v = classifier.match(q)
+            assert v.tool_call["arguments"]["action"] == "close", q
+
     def test_unknown_off_topic_declined_or_fallback(self, classifier):
         v = classifier.match("what is the weather tomorrow")
         assert v.tool_call is None   # never dispatches garbage

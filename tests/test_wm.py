@@ -396,3 +396,118 @@ class TestUnsupportedBackend:
             wm.focus_address("0x1")
         with pytest.raises(RuntimeError, match="unsupported wm backend"):
             wm.switch_workspace(1)
+        with pytest.raises(RuntimeError, match="unsupported wm backend"):
+            wm.minimize_active()
+
+
+class TestMinimize:
+    def test_x11_dispatches_to_helper(self, monkeypatch):
+        monkeypatch.setattr(wm, "require", lambda: "x11")
+        calls = []
+        monkeypatch.setattr(wm, "_x11_minimize", lambda: calls.append(1))
+        wm.minimize_active()
+        assert calls == [1]
+
+    @pytest.mark.parametrize("backend", ["hyprland", "sway", "kde", "gnome"])
+    def test_other_backends_are_unsupported(self, monkeypatch, backend):
+        """Minimize is honest about absence: no fake fallback to another action."""
+        monkeypatch.setattr(wm, "require", lambda: backend)
+        with pytest.raises(RuntimeError, match="unsupported wm backend"):
+            wm.minimize_active()
+
+    def test_x11_sends_iconify_to_active_window(self, monkeypatch):
+        """Wire shape: WM_CHANGE_STATE=IconicState to the _NET_ACTIVE_WINDOW id."""
+        import sys
+        import types
+
+        sent = {}
+
+        class FakeRoot:
+            def get_full_property(self, atom, _type):
+                assert atom == "_NET_ACTIVE_WINDOW"
+                return mock.Mock(value=[0x42])
+
+            def send_event(self, msg, event_mask=None):
+                sent.update(msg=msg, mask=event_mask)
+
+        class FakeDisplay:
+            def screen(self):
+                d = types.SimpleNamespace(root=FakeRoot())
+                return d
+
+            def intern_atom(self, name):
+                return name
+
+            def flush(self):
+                pass
+
+            def close(self):
+                sent["closed"] = True
+
+        xlib = types.ModuleType("Xlib")
+        xmod = types.ModuleType("Xlib.X")
+        xmod.AnyPropertyType = 0
+        xmod.SubstructureRedirectMask = 1 << 20
+        xmod.SubstructureNotifyMask = 1 << 19
+        dispmod = types.ModuleType("Xlib.display")
+        dispmod.Display = FakeDisplay
+        protomod = types.ModuleType("Xlib.protocol")
+        evmod = types.ModuleType("Xlib.protocol.event")
+
+        def client_message(**kwargs):
+            sent.update(kwargs)
+            return kwargs
+
+        evmod.ClientMessage = client_message
+        xlib.X, xlib.display = xmod, dispmod
+        protomod.event = evmod
+        for name, mod in [("Xlib", xlib), ("Xlib.X", xmod),
+                          ("Xlib.display", dispmod),
+                          ("Xlib.protocol", protomod),
+                          ("Xlib.protocol.event", evmod)]:
+            monkeypatch.setitem(sys.modules, name, mod)
+
+        wm._x11_minimize()
+
+        assert sent["window"] == 0x42
+        assert sent["client_type"] == "WM_CHANGE_STATE"
+        assert sent["data"] == (32, [3, 0, 0, 0, 0])
+        assert sent["mask"] == (1 << 20) | (1 << 19)
+        assert sent["closed"] is True
+
+    def test_x11_without_active_window_raises(self, monkeypatch):
+        import sys
+        import types
+
+        class FakeRoot:
+            def get_full_property(self, _atom, _type):
+                return None
+
+        class FakeDisplay:
+            def screen(self):
+                return types.SimpleNamespace(root=FakeRoot())
+
+            def intern_atom(self, name):
+                return name
+
+            def close(self):
+                pass
+
+        xlib = types.ModuleType("Xlib")
+        xmod = types.ModuleType("Xlib.X")
+        xmod.AnyPropertyType = 0
+        dispmod = types.ModuleType("Xlib.display")
+        dispmod.Display = FakeDisplay
+        protomod = types.ModuleType("Xlib.protocol")
+        evmod = types.ModuleType("Xlib.protocol.event")
+        evmod.ClientMessage = mock.Mock()
+        xlib.X, xlib.display = xmod, dispmod
+        protomod.event = evmod
+        for name, mod in [("Xlib", xlib), ("Xlib.X", xmod),
+                          ("Xlib.display", dispmod),
+                          ("Xlib.protocol", protomod),
+                          ("Xlib.protocol.event", evmod)]:
+            monkeypatch.setitem(sys.modules, name, mod)
+
+        with pytest.raises(RuntimeError, match="no active window"):
+            wm._x11_minimize()

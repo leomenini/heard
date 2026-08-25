@@ -254,6 +254,16 @@ PROTOTYPES: dict[str, tuple[str, dict, list[str]]] = {
         "cierra esta ventana",
         "cierra la ventana",
     ]),
+    "window_action:minimize": ("window_action", {"action": "minimize"}, [
+        "minimize this window",
+        "minimize the window",
+        "minimize it",
+        "minimize the current window",
+        "minimiza esta ventana",
+        "minimizar la ventana",
+        "minimizar ventana actual",
+        "minimizá la ventana",
+    ]),
     # focus needs a generated target -> always falls back to needle
     "window_action:focus": ("window_action", {"action": "focus"}, []),
     "window_action:fullscreen": ("window_action", {"action": "fullscreen"}, [
