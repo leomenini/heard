@@ -31,10 +31,23 @@ class TestLaunchApp:
     @mock.patch("heard.tools.helpers.wm.list_windows", return_value=[])
     @mock.patch("heard.tools.apps.app_exists", return_value=True)
     @mock.patch("heard.tools.apps.subprocess.Popen", side_effect=FileNotFoundError("uwsm"))
-    def test_missing_uwsm(self, mock_popen, mock_exists, _windows):
+    def test_nothing_can_spawn(self, mock_popen, mock_exists, _windows):
+        """Neither uwsm nor the binary itself is runnable."""
         r = launch_app("firefox")
         assert isinstance(r, Rejected)
         assert r.kind == "declined"
+        assert mock_popen.call_count == 2       # tried uwsm, then plain spawn
+
+    @mock.patch("heard.tools.helpers.wm.list_windows", return_value=[])
+    @mock.patch("heard.tools.apps.app_exists", return_value=True)
+    @mock.patch("heard.tools.apps.subprocess.Popen")
+    def test_falls_back_to_plain_spawn(self, mock_popen, mock_exists, _windows):
+        """No uwsm (X11 desktops): spawn the binary directly instead."""
+        mock_popen.side_effect = [FileNotFoundError("uwsm"), mock.DEFAULT]
+        r = launch_app("firefox")
+        assert isinstance(r, Ok)
+        assert mock_popen.call_args_list[0].args[0][0] == "uwsm"
+        assert mock_popen.call_args_list[1].args[0] == ["firefox"]
 
     @mock.patch("heard.tools.helpers.wm.focus_address")
     @mock.patch("heard.tools.helpers.wm.list_windows", return_value=WINDOWS)

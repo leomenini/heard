@@ -80,11 +80,12 @@ def _wf_recorder_cmd(output: str | None, path: Path) -> list[str]:
 
 def _ffmpeg_cmd(path: Path) -> list[str]:
     # X11 fallback; works on Xorg and captures the primary XWayland display.
+    # The grab target follows $DISPLAY rather than assuming :0.0.
     return [
         "ffmpeg",
         "-y",
         "-f", "x11grab",
-        "-i", ":0.0",
+        "-i", os.environ.get("DISPLAY", ":0"),
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-crf", "23",

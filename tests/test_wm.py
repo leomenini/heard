@@ -14,6 +14,9 @@ class TestDetect:
         cfg._cached_load.cache_clear()
         monkeypatch.delenv("HYPRLAND_INSTANCE_SIGNATURE", raising=False)
         monkeypatch.delenv("SWAYSOCK", raising=False)
+        # the generic X11 fallback would otherwise answer for the None case
+        monkeypatch.delenv("XDG_SESSION_TYPE", raising=False)
+        monkeypatch.delenv("DISPLAY", raising=False)
         try:
             monkeypatch.setenv("HYPRLAND_INSTANCE_SIGNATURE", "sig")
             assert wm.detect() == "hyprland"
@@ -270,3 +273,126 @@ class TestGnome:
 class TestWindowLabel:
     def test_label_combines_class_and_title(self):
         assert Window("1", "Foot", "Terminal").label() == "foot terminal"
+
+
+class TestX11:
+    """Generic EWMH backend over wmctrl (Cinnamon, XFCE, MATE, plain X11)."""
+
+    @pytest.fixture
+    def x11(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HEARD_CONFIG", str(tmp_path / "c.toml"))
+        from heard import config as cfg
+        cfg._cached_load.cache_clear()
+        for var in ("HYPRLAND_INSTANCE_SIGNATURE", "SWAYSOCK",
+                    "KDE_FULL_SESSION", "WAYLAND_DISPLAY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("XDG_CURRENT_DESKTOP", "X-Cinnamon")
+        monkeypatch.setenv("DESKTOP_SESSION", "cinnamon")
+        monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
+        yield
+        cfg._cached_load.cache_clear()
+
+    def test_detect_cinnamon(self, x11):
+        assert wm.detect() == "x11"
+
+    def test_detect_display_without_wayland(self, x11, monkeypatch):
+        monkeypatch.delenv("XDG_SESSION_TYPE")
+        monkeypatch.setenv("DISPLAY", ":0")
+        assert wm.detect() == "x11"
+
+    def test_kde_on_x11_still_kde(self, x11, monkeypatch):
+        """Richer backends must win over the generic fallback."""
+        monkeypatch.setenv("XDG_CURRENT_DESKTOP", "KDE")
+        assert wm.detect() == "kde"
+
+    def test_gnome_on_x11_still_gnome(self, x11, monkeypatch):
+        monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME")
+        assert wm.detect() == "gnome"
+
+    # --- parsing ---
+
+    def test_parses_wmctrl_output(self, x11, monkeypatch):
+        out = (
+            "0x03400004  0 brave-browser.Brave-browser  leo-desktop  Heard - Brave\n"
+            "0x04800007  0 nemo.Nemo             leo-desktop chatBotAI\n"
+        )
+        monkeypatch.setattr(wm, "_run", lambda *a, **k: mock.Mock(stdout=out))
+        windows = wm.list_windows()
+        assert [w.address for w in windows] == ["0x03400004", "0x04800007"]
+        assert windows[0].cls == "Brave-browser"
+        assert windows[0].title == "Heard - Brave"     # spaces kept
+        assert windows[1].cls == "Nemo"
+
+    def test_empty_title_is_still_a_window(self, x11, monkeypatch):
+        out = "0x03000003  0 nemo-desktop.Nemo-desktop  leo-desktop\n"
+        monkeypatch.setattr(wm, "_run", lambda *a, **k: mock.Mock(stdout=out))
+        windows = wm.list_windows()
+        assert len(windows) == 1
+        assert windows[0].title == ""
+
+    def test_sticky_window_kept(self, x11, monkeypatch):
+        out = "0x05000011 -1 whatsie.WhatSie  leo-desktop  WhatSie\n"
+        monkeypatch.setattr(wm, "_run", lambda *a, **k: mock.Mock(stdout=out))
+        assert len(wm.list_windows()) == 1
+
+    def test_short_rows_and_blanks_skipped(self, x11, monkeypatch):
+        out = "garbage\n\n0x1 0 a.A host title\n"
+        monkeypatch.setattr(wm, "_run", lambda *a, **k: mock.Mock(stdout=out))
+        assert [w.address for w in wm.list_windows()] == ["0x1"]
+
+    def test_class_without_dot(self, x11, monkeypatch):
+        out = "0x1 0 solo host title\n"
+        monkeypatch.setattr(wm, "_run", lambda *a, **k: mock.Mock(stdout=out))
+        assert wm.list_windows()[0].cls == "solo"
+
+    # --- commands ---
+
+    def test_close_active(self, x11, monkeypatch):
+        calls = []
+        monkeypatch.setattr(wm, "_run", lambda cmd, **k: calls.append(cmd))
+        wm.close_active()
+        assert calls == [["wmctrl", "-c", ":ACTIVE:"]]
+
+    def test_toggle_fullscreen(self, x11, monkeypatch):
+        calls = []
+        monkeypatch.setattr(wm, "_run", lambda cmd, **k: calls.append(cmd))
+        wm.toggle_fullscreen()
+        assert calls == [["wmctrl", "-r", ":ACTIVE:", "-b", "toggle,fullscreen"]]
+
+    def test_focus_address(self, x11, monkeypatch):
+        calls = []
+        monkeypatch.setattr(wm, "_run", lambda cmd, **k: calls.append(cmd))
+        wm.focus_address("0x03400004")
+        assert calls == [["wmctrl", "-i", "-a", "0x03400004"]]
+
+    def test_switch_workspace_is_zero_indexed(self, x11, monkeypatch):
+        """heard speaks 1-indexed workspaces; wmctrl desktops start at 0."""
+        calls = []
+        monkeypatch.setattr(wm, "_run", lambda cmd, **k: calls.append(cmd))
+        wm.switch_workspace(3)
+        assert calls == [["wmctrl", "-s", "2"]]
+
+    def test_focus_by_token_uses_generic_path(self, x11, monkeypatch):
+        out = "0x1 0 brave.Brave host Some Page - Brave\n"
+        calls = []
+
+        def fake_run(cmd, **k):
+            calls.append(cmd)
+            return mock.Mock(stdout=out)
+
+        monkeypatch.setattr(wm, "_run", fake_run)
+        wm.focus_by_token("brave")
+        assert calls[-1] == ["wmctrl", "-i", "-a", "0x1"]
+
+
+class TestUnsupportedBackend:
+    def test_unknown_backend_raises(self, monkeypatch):
+        """A backend with no branch must fail loudly, not fall through to KDE."""
+        monkeypatch.setattr(wm, "require", lambda: "beos")
+        for fn in (wm.list_windows, wm.close_active, wm.toggle_fullscreen):
+            with pytest.raises(RuntimeError, match="unsupported wm backend"):
+                fn()
+        with pytest.raises(RuntimeError, match="unsupported wm backend"):
+            wm.focus_address("0x1")
+        with pytest.raises(RuntimeError, match="unsupported wm backend"):
+            wm.switch_workspace(1)

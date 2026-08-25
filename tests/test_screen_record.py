@@ -1,5 +1,6 @@
 """Screen recording tool."""
 
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -83,6 +84,19 @@ class TestStart:
         assert isinstance(r, Ok)
         calls = [c[0][0][0] for c in mock_popen.call_args_list]
         assert calls == ["wf-recorder", "ffmpeg"]
+
+
+class TestFfmpegCmd:
+    def test_grab_target_follows_display_env(self, monkeypatch):
+        """x11grab must follow $DISPLAY, not assume :0.0."""
+        monkeypatch.setenv("DISPLAY", ":1")
+        cmd = screen_record._ffmpeg_cmd(Path("/tmp/x.mp4"))
+        assert cmd[cmd.index("-i") + 1] == ":1"
+
+    def test_grab_target_defaults_without_display(self, monkeypatch):
+        monkeypatch.delenv("DISPLAY", raising=False)
+        cmd = screen_record._ffmpeg_cmd(Path("/tmp/x.mp4"))
+        assert cmd[cmd.index("-i") + 1] == ":0"
 
 
 class TestStop:

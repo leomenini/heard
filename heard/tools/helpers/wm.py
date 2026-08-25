@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from jeepney import DBusAddress, new_method_call
 
-BACKENDS = ("hyprland", "sway", "kde", "gnome")
+BACKENDS = ("hyprland", "sway", "kde", "gnome", "x11")
 _DBUS_TIMEOUT_S = 2.0
 
 
@@ -56,6 +56,13 @@ def detect() -> str | None:
     session = os.environ.get("DESKTOP_SESSION", "").lower()
     if "gnome" in desktop or "gnome" in session:
         return "gnome"
+    # Generic EWMH last: any X11 session without a richer backend above
+    # (Cinnamon, XFCE, MATE, i3 ...). Kept last so KDE-on-X11 and GNOME-on-X11
+    # still get their own backends.
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "x11":
+        return "x11"
+    if os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        return "x11"
     return None
 
 
@@ -252,7 +259,45 @@ def _kwin_run_script(source: str) -> None:
             pass
 
 
+# --- X11 (generic EWMH via wmctrl) -----------------------------------------
+
+_X11_ACTIVE = ":ACTIVE:"       # wmctrl's own selector; saves an xprop round trip
+
+
+def _x11_window(line: str) -> Window | None:
+    """Parse one `wmctrl -l -x` row: id desktop wm_class host [title].
+
+    Title is the only field that may contain spaces, so it takes the tail.
+    A window with an empty title is still a window; a short row is not.
+    """
+    parts = line.split(None, 4)
+    if len(parts) < 4:
+        return None
+    wid, _desktop, wm_class, _host = parts[:4]
+    title = parts[4] if len(parts) > 4 else ""
+    # WM_CLASS is 'instance.Class'; the class half matches what the other
+    # backends report (hyprland initialClass, sway app_id)
+    cls = wm_class.rsplit(".", 1)[-1] if "." in wm_class else wm_class
+    return Window(wid, cls, title)
+
+
+def _x11_list() -> list[Window]:
+    out = _run(["wmctrl", "-l", "-x"]).stdout
+    windows = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        window = _x11_window(line)
+        if window is not None:
+            windows.append(window)
+    return windows
+
+
 # --- Public API ------------------------------------------------------------
+
+def _unsupported(backend: str) -> RuntimeError:
+    return RuntimeError(f"unsupported wm backend {backend!r}")
+
 
 def list_windows() -> list[Window]:
     backend = require()
@@ -262,7 +307,11 @@ def list_windows() -> list[Window]:
         return _sway_list()
     if backend == "gnome":
         return _gnome_list()
-    return _kde_list()
+    if backend == "x11":
+        return _x11_list()
+    if backend == "kde":
+        return _kde_list()
+    raise _unsupported(backend)
 
 
 def close_active() -> None:
@@ -276,9 +325,13 @@ def close_active() -> None:
             _gnome_call("Close", "s", ("active",))
         except Exception:
             _gnome_eval("global.display.focus_window.delete(0); 'done'")
-    else:
+    elif backend == "x11":
+        _run(["wmctrl", "-c", _X11_ACTIVE])
+    elif backend == "kde":
         active = _kde_kdotool("getactivewindow")
         _kde_kdotool("windowclose", active)
+    else:
+        raise _unsupported(backend)
 
 
 _KDE_FULLSCREEN_SCRIPT = (
@@ -304,8 +357,12 @@ def toggle_fullscreen() -> None:
                 "let w = global.display.focus_window;"
                 "w.fullscreen ? w.unfullscreen() : w.fullscreen(); 'done'"
             )
-    else:
+    elif backend == "x11":
+        _run(["wmctrl", "-r", _X11_ACTIVE, "-b", "toggle,fullscreen"])
+    elif backend == "kde":
         _kwin_run_script(_KDE_FULLSCREEN_SCRIPT)
+    else:
+        raise _unsupported(backend)
 
 
 def focus_address(address: str) -> None:
@@ -324,8 +381,12 @@ def focus_address(address: str) -> None:
                 f"let w = wins.find(w => {_ID_EXPR} === {aid});"
                 f"if (w) w.activate(0); 'done'"
             )
-    else:
+    elif backend == "x11":
+        _run(["wmctrl", "-i", "-a", address])
+    elif backend == "kde":
         _kde_kdotool("windowactivate", address)
+    else:
+        raise _unsupported(backend)
 
 
 def focus_by_token(token: str) -> None:
@@ -357,5 +418,9 @@ def switch_workspace(n: int) -> None:
                 f"global.workspace_manager.get_workspace_by_index({n - 1}).activate(0);"
                 f" 'done'"
             )
-    else:
+    elif backend == "x11":
+        _run(["wmctrl", "-s", str(n - 1)])       # wmctrl desktops are 0-indexed
+    elif backend == "kde":
         _kwin_run_script(f"workspace.currentDesktop = {n};")
+    else:
+        raise _unsupported(backend)

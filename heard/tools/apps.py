@@ -44,13 +44,17 @@ def launch_app(app: str) -> Result:
     except Exception:
         pass  # focus failed; a launch is still better than nothing
 
-    try:
-        subprocess.Popen(
-            ["uwsm", "app", "--", binary],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        return Ok("launch_app", f"launched {binary}")
-    except FileNotFoundError:
-        return Rejected("launch_app", "uwsm not found", "declined")
+    # uwsm first (proper scope/cgroup on wlroots sessions), plain spawn after:
+    # uwsm is Wayland-session tooling and is absent on X11 desktops
+    for argv in (["uwsm", "app", "--", binary], [binary]):
+        try:
+            subprocess.Popen(
+                argv,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            return Ok("launch_app", f"launched {binary}")
+        except FileNotFoundError:
+            continue
+    return Rejected("launch_app", f"could not launch {binary}", "declined")

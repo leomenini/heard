@@ -19,7 +19,7 @@ DEFAULTS: dict[str, str | bool] = {
     "embedder_model": "",        # empty = auto per language
     "stt_model_size": "base",    # tiny | base | small
     "stt_cpu_threads": "",       # empty = ctranslate2 default; try 2 on hybrid CPUs
-    "wm_backend": "auto",        # auto | hyprland | sway | kde
+    "wm_backend": "auto",        # auto | hyprland | sway | kde | gnome | x11
     "events": True,              # append local JSONL usage log
     "llm_url": "",               # OpenAI-compatible chat completions endpoint
     "llm_api_key": "",           # Bearer token for llm_url
@@ -32,7 +32,7 @@ DEFAULTS: dict[str, str | bool] = {
 }
 
 VALID_LANGUAGE = ("en", "es")
-VALID_WM_BACKEND = ("auto", "hyprland", "sway", "kde", "gnome")
+VALID_WM_BACKEND = ("auto", "hyprland", "sway", "kde", "gnome", "x11")
 VALID_TTS_BACKEND = ("", "auto", "piper", "gtts", "flite", "none")
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+**Generic X11 backend**
+- Fifth WM backend (`x11`) speaks plain EWMH through `wmctrl`: window list,
+  close, fullscreen, focus, and workspace switch. Detection tries it last, so
+  Cinnamon, XFCE, MATE, and i3 sessions get support without displacing the
+  richer Hyprland/Sway/KDE/GNOME backends.
+- `launch_app` falls back to a plain spawn where `uwsm` is absent (X11
+  desktops) instead of declining.
+- Screen recording grabs `$DISPLAY` instead of assuming `:0.0`.
+
+**Weightless degradation**
+- A missing Needle checkpoint no longer kills warmup or mid-command dispatch:
+  `resolve_encoder` takes a lazy factory, `auto` degrades to fastembed, and an
+  utterance routed to the generative fallback declines with a printed reason
+  instead of raising.
+
+**Opt-in dictionary rescue**
+- `HEARD_DICT_RESCUE=1` lets a strict `.desktop` hit rescue a near-miss
+  `launch_app` that placed within `HEARD_RESCUE_RANK` (default 3) above
+  `HEARD_RESCUE_FLOOR` (default 0.30). Off by default: it trades accept rate
+  against misaccept risk; measured numbers live in `reports/latency.md`.
+
 ## 1.4.0 — 2026-08-22
 
 **GNOME without unsafe mode**

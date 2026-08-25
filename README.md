@@ -76,6 +76,10 @@ bindsym XF86AudioMicMute exec heard hold down
 **KDE**: System Settings → Shortcuts → Add Command, `heard hold down` on
 press and `heard hold up` on release of the chosen shortcut.
 
+**Cinnamon/X11 note**: Cinnamon custom shortcuts fire on press only and cannot
+express the press/release pair, so compositor-driven holds are unavailable
+there. The evdev PTT path is the primary trigger on these desktops.
+
 The daemon keeps models hot, so a binding-triggered command costs zero load
 time; both triggers share one controller and can never record simultaneously.
 
@@ -86,8 +90,10 @@ The trailing tag marks fast-path accepts with their cosine score; its absence
 means the generative fallback ran.
 
 Requirements: a microphone, PipeWire (`wpctl`), and membership in the `input`
-group for key capture. Window/workspace tools use one of four backends
-(Hyprland, Sway, KDE, GNOME) detected from the session. On GNOME, install the
+group for key capture. Window/workspace tools use one of five backends
+(Hyprland, Sway, KDE, GNOME, or generic X11 via wmctrl) detected from the
+session; the X11 backend is tried last, so Cinnamon, XFCE, MATE, and i3 are
+covered without displacing the richer ones. On GNOME, install the
 tiny companion Shell extension,
 [`packaging/gnome-shell/`](packaging/gnome-shell/),
 since stock shells disallow D-Bus Eval; without it heard falls back to Eval,
@@ -169,7 +175,7 @@ heard routes spoken commands to tool calls. That is a classification problem, no
 
 | Tool | Handler | What it does |
 |---|---|---|
-| `launch_app` | `tools/apps.py` | Focus-or-launch: fuzzy-matches running windows via the WM backend, focuses if already open, else launches through uwsm. Spoken names resolve against installed `.desktop` entries (rapidfuzz) |
+| `launch_app` | `tools/apps.py` | Focus-or-launch: fuzzy-matches running windows via the WM backend, focuses if already open, else launches through uwsm, falling back to a plain spawn where uwsm is absent. Spoken names resolve against installed `.desktop` entries (rapidfuzz) |
 | `media_control` | `tools/media.py` | Play, pause, next, previous over MPRIS: one persistent D-Bus connection (jeepney), playerctl fallback |
 | `volume_control` | `tools/volume.py` | Up, down, mute, set percent: percentages parsed from speech ("fifty", "65%", "half") |
 | `microphone_control` | `tools/microphone.py` | Mute or unmute the default microphone source via wpctl |
@@ -213,7 +219,7 @@ The dispatcher never passes raw model output to a shell. Arguments are validated
 | `embedder_model` | auto per language | explicit fastembed model override |
 | `stt_model_size` | `"base"` | faster-whisper size (`tiny`/`base`/`small`) |
 | `stt_cpu_threads` | auto | pin ctranslate2 threads; try 2 on hybrid CPUs |
-| `wm_backend` | `"auto"` | `auto` \| `hyprland` \| `sway` \| `kde` \| `gnome` (KDE windows via kdotool, workspaces/fullscreen via KWin scripting; GNOME via the companion Shell extension) |
+| `wm_backend` | `"auto"` | `auto` \| `hyprland` \| `sway` \| `kde` \| `gnome` \| `x11` (KDE windows via kdotool, workspaces/fullscreen via KWin scripting; GNOME via the companion Shell extension; x11 via wmctrl) |
 | `events` | `true` | local JSONL usage log |
 | `tts_enabled` | `true` | speak query answers out loud |
 | `tts_backend` | auto | `""`(auto: piper→gtts→flite) \| `piper` \| `gtts` \| `flite` \| `none`: spoken answers for query mode |
