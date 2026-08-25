@@ -136,17 +136,31 @@ def _probe(encode) -> np.ndarray:
                    "what is the weather tomorrow"])
 
 
-def resolve_encoder(needle_triple=None):
+def resolve_encoder(needle_factory=None):
     """Return an encode(texts)->np.ndarray callable per HEARD_EMBEDDER.
 
     auto: use needle when its contrastive space is alive, else fastembed.
     needle/fastembed force one backend. The fastembed model follows config
     `language` (es -> multilingual) unless HEARD_EMBED_MODEL overrides.
-    needle_triple: (model, params, tokenizer) shared with generative intent.
+    needle_factory: callable returning (model, params, tokenizer), shared with
+    generative intent. Deliberately a factory, not the triple: loading the
+    checkpoint is expensive and can fail outright, and the fastembed path needs
+    neither. In "auto" mode a missing checkpoint therefore degrades to
+    fastembed instead of taking the whole daemon down at warmup.
     """
     mode = os.environ.get("HEARD_EMBEDDER", "auto").lower()
 
-    if mode in ("auto", "needle") and needle_triple is not None:
+    needle_triple = None
+    if mode in ("auto", "needle") and needle_factory is not None:
+        try:
+            needle_triple = needle_factory()
+        except Exception as e:
+            if mode == "needle":
+                raise
+            print(f"heard: needle checkpoint unavailable ({e.__class__.__name__}); "
+                  "using fastembed for the fast path")
+
+    if needle_triple is not None:
         emb = NeedleEmbedder(*needle_triple)
 
         def encode(texts):

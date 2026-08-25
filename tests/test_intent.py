@@ -1,5 +1,7 @@
 """Intent module tests -- Needle is mocked in conftest.py."""
 
+from unittest import mock
+
 import pytest
 
 
@@ -117,3 +119,36 @@ class TestCheckpointResolution:
         monkeypatch.delenv("HEARD_CHECKPOINT", raising=False)
         resolved = Path(intent._checkpoint_file()).resolve()
         assert resolved == (ckpt / "needle_checkpoint.pkl").resolve()
+
+
+class TestMissingCheckpointDegrades:
+    """No Needle weights: the fast path still works, the fallback declines.
+
+    The daemon must survive an utterance that routes to the generative
+    fallback; raising here would kill `heard listen` mid-command.
+    """
+
+    def test_generate_resolve_declines_without_checkpoint(self, monkeypatch):
+        import time
+
+        from heard import intent
+
+        monkeypatch.setattr(intent, "_model",
+                            mock.Mock(side_effect=RuntimeError(
+                                "Needle checkpoint not found.\nLooked for: ...")))
+        r = intent._generate_resolve("focus on the browser", time.perf_counter())
+        assert r.tool_call is None
+        assert r.reason == "no generative fallback available"
+        assert r.latency_ms is not None
+
+    def test_resolve_routes_uncertain_to_the_decline(self, monkeypatch):
+        from heard import intent
+        from heard.classifier import Verdict
+
+        monkeypatch.setattr(intent, "_classifier",
+                            lambda: mock.Mock(match=lambda q: Verdict(score=0.5)))
+        monkeypatch.setattr(intent, "_model",
+                            mock.Mock(side_effect=RuntimeError("Needle checkpoint not found.")))
+        r = intent.resolve("focus on the browser")
+        assert r.tool_call is None
+        assert r.reason == "no generative fallback available"

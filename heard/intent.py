@@ -83,7 +83,9 @@ def _tools_json() -> str:
 @lru_cache(maxsize=1)
 def _encoder():
     """Embedding backend for the fast path (needle or fastembed MiniLM)."""
-    encode = resolve_encoder(needle_triple=_model())
+    # factory, not _model(): an eagerly-evaluated argument would load (or fail
+    # to find) the checkpoint even when the fastembed path never touches it
+    encode = resolve_encoder(needle_factory=_model)
     # Copy any backend-specific thresholds to the stable _encode function so
     # the classifier picks them up regardless of caching wrappers.
     for name in ("accept_score", "margin", "floor_decline"):
@@ -103,7 +105,15 @@ def _classifier() -> Classifier:
 
 
 def _generate_resolve(query: str, t0: float) -> Resolution:
-    model, params, tok = _model()
+    try:
+        model, params, tok = _model()
+    except RuntimeError as e:
+        # No checkpoint: the fast path still works on fastembed, so decline this
+        # one utterance instead of taking the daemon down mid-command.
+        print(f"heard: generative fallback unavailable ({e.args[0].splitlines()[0]})",
+              flush=True)
+        return Resolution(query, None, "no generative fallback available",
+                          (time.perf_counter() - t0) * 1000)
     raw = generate(model, params, tok, query=query,
                    tools=_tools_json(), stream=False, max_gen_len=MAX_GEN_LEN)
     ms = (time.perf_counter() - t0) * 1000
