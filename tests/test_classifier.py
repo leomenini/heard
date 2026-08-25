@@ -180,3 +180,71 @@ class TestUnmuteRouting:
     def test_plain_still_mutes(self, classifier):
         v = classifier.match("silencia")
         assert v.tool_call["arguments"]["action"] == "mute"
+
+
+class TestDictRescue:
+    """launch_app rescued from a near-miss rank by a strict .desktop hit.
+
+    Opt-in via HEARD_DICT_RESCUE; measured, not assumed -- see the module
+    docstring on DICT_RESCUE. These pin the gate's conditions, not the
+    threshold values, which are tuned per embedder.
+    """
+
+    RANKED = [
+        ("window_action:close", 0.45),
+        ("launch_app:app", 0.42),
+        ("media_control:play", 0.30),
+        ("system_query:time", 0.20),
+    ]
+
+    @pytest.fixture
+    def cls_obj(self, classifier):
+        return classifier
+
+    def test_off_by_default(self, cls_obj, monkeypatch):
+        monkeypatch.setattr(clf, "DICT_RESCUE", False)
+        monkeypatch.setattr(clf, "_dict_hit", lambda p: True)
+        assert cls_obj._dict_rescue(self.RANKED, "open brave") is None
+
+    def test_rescues_near_miss_with_dict_hit(self, cls_obj, monkeypatch):
+        monkeypatch.setattr(clf, "DICT_RESCUE", True)
+        monkeypatch.setattr(clf, "RESCUE_RANK", 3)
+        monkeypatch.setattr(clf, "_dict_hit", lambda p: True)
+        assert cls_obj._dict_rescue(self.RANKED, "open brave") == "launch_app:app"
+
+    def test_no_dict_hit_no_rescue(self, cls_obj, monkeypatch):
+        """The dictionary is the whole evidence; without it, fall back."""
+        monkeypatch.setattr(clf, "DICT_RESCUE", True)
+        monkeypatch.setattr(clf, "RESCUE_RANK", 3)
+        monkeypatch.setattr(clf, "_dict_hit", lambda p: False)
+        assert cls_obj._dict_rescue(self.RANKED, "open nonsense") is None
+
+    def test_below_rescue_floor_no_rescue(self, cls_obj, monkeypatch):
+        monkeypatch.setattr(clf, "DICT_RESCUE", True)
+        monkeypatch.setattr(clf, "RESCUE_RANK", 3)
+        monkeypatch.setattr(clf, "RESCUE_FLOOR", 0.50)
+        monkeypatch.setattr(clf, "_dict_hit", lambda p: True)
+        assert cls_obj._dict_rescue(self.RANKED, "open brave") is None
+
+    def test_beyond_rescue_rank_no_rescue(self, cls_obj, monkeypatch):
+        """RESCUE_RANK caps how far down the ranking the gate will reach."""
+        monkeypatch.setattr(clf, "DICT_RESCUE", True)
+        monkeypatch.setattr(clf, "RESCUE_RANK", 1)
+        monkeypatch.setattr(clf, "_dict_hit", lambda p: True)
+        assert cls_obj._dict_rescue(self.RANKED, "open brave") is None
+
+    def test_absent_from_ranking_no_rescue(self, cls_obj, monkeypatch):
+        monkeypatch.setattr(clf, "DICT_RESCUE", True)
+        monkeypatch.setattr(clf, "RESCUE_RANK", 3)
+        monkeypatch.setattr(clf, "_dict_hit", lambda p: True)
+        ranked = [("window_action:close", 0.45), ("media_control:play", 0.30)]
+        assert cls_obj._dict_rescue(ranked, "open brave") is None
+
+    def test_rescue_floor_is_independent_of_dict_floor(self, cls_obj, monkeypatch):
+        """Tuning the rescue must not loosen the corroboration gate above it."""
+        monkeypatch.setattr(clf, "DICT_RESCUE", True)
+        monkeypatch.setattr(clf, "RESCUE_RANK", 3)
+        monkeypatch.setattr(clf, "RESCUE_FLOOR", 0.30)
+        monkeypatch.setattr(clf, "DICT_FLOOR", 0.90)     # corroboration shut
+        monkeypatch.setattr(clf, "_dict_hit", lambda p: True)
+        assert cls_obj._dict_rescue(self.RANKED, "open brave") == "launch_app:app"

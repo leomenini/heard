@@ -60,6 +60,28 @@ next worst `media_control:next <-> previous` ~0.78.
 Thresholds live in `heard/classifier.py` (`FLOOR_DECLINE`, `ACCEPT_SCORE`,
 `MARGIN`, `DICT_FLOOR`, `DICT_CUTOFF`) — all env-overridable for live tuning.
 
+## Dictionary rescue tuning
+
+Measured on **held-out** launch phrasings ("open <real installed app>", names
+absent from `PROTOTYPES`) with fastembed MiniLM: 12 launch probes, 19
+off-topic. The benchmark probe set cannot detect `launch_app` regressions on
+its own: its English `launch_app` probes are near-verbatim prototype
+utterances and pass by construction.
+
+| config | launch accepted | misaccepts | off-topic misaccepts |
+|---|---|---|---|
+| baseline (rescue off) | 3/12 | 0 | 0 |
+| rank<=3, floor 0.35 | 7/12 | 0 | 0 |
+| **rank<=3, floor 0.30** | **9/12** | **0** | **0** |
+| rank<=3, floor 0.25 | 11/12 | 0 | 2 |
+| rank<=5, floor 0.30 | 9/12 | 0 | 1 |
+
+`RESCUE_RANK` is nearly inert; `RESCUE_FLOOR` is the load-bearing knob and the
+cliff is sharp. Both failures at 0.25 are the same shape: a sentence
+*mentioning* an app read as a command to launch it (`add vlc to my shopping
+list` -> `launch_app`). These are fastembed geometry numbers and do not
+transfer to a trained Needle head.
+
 ## Generative Needle probes
 
 See the CONSTRAINED / UNCONSTRAINED sections of the benchmark output; paste a

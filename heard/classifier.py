@@ -45,6 +45,17 @@ def _threshold(encode, name: str) -> float:
 DICT_FLOOR = float(os.environ.get("HEARD_DICT_FLOOR", "0.40"))
 DICT_CUTOFF = int(os.environ.get("HEARD_DICT_CUTOFF", "90"))
 
+# Rescue a near-miss launch_app on a strict dictionary hit. Opt-in: measured
+# per embedder via the fast-path probe, because it trades accept rate against
+# misaccept risk. RESCUE_RANK caps how far down the ranking it will reach.
+DICT_RESCUE = os.environ.get("HEARD_DICT_RESCUE", "").strip().lower() in ("1", "true", "yes")
+RESCUE_RANK = int(os.environ.get("HEARD_RESCUE_RANK", "3"))
+# Deliberately its own floor, not DICT_FLOOR: the rescue reaches further down
+# the ranking than the corroboration gate above, so tuning it must not quietly
+# loosen that one too (at a shared 0.25, corroboration alone misaccepts
+# "add vlc to my shopping list").
+RESCUE_FLOOR = float(os.environ.get("HEARD_RESCUE_FLOOR", "0.30"))
+
 
 @dataclass(frozen=True)
 class Verdict:
@@ -491,11 +502,39 @@ class Classifier:
             and _dict_hit(extract_app_phrase(query))
         )
         if not (strong or corroborated):
+            rescued = self._dict_rescue(ranked, query)
+            if rescued is not None:
+                # app nouns pull "open <name>" toward window_action; a strict
+                # .desktop hit on a near-miss launch_app is better evidence
+                # than the centroid ordering. Off-topic already declined above.
+                return Verdict(tool_call=self._build_call(rescued, query),
+                               score=best_score, runner_up=runner)
             # too close to call -> generative fallback; scores kept for tuning
             return Verdict(score=best_score, runner_up=runner)
 
         return Verdict(tool_call=self._build_call(best_key, query),
                        score=best_score, runner_up=runner)
+
+    def _dict_rescue(self, ranked: list[tuple[str, float]], query: str) -> str | None:
+        """launch_app as a near-miss, rescued by a strict .desktop hit.
+
+        Spoken app names ("open brave") pull toward window_action:close, so
+        launch_app loses the ranking outright and the corroboration gate above
+        -- which requires it to *win* -- never fires. Here it only has to place
+        within the top RESCUE_RANK and clear RESCUE_FLOOR.
+
+        Off by default: this trades a real accept-rate gain for misaccept risk,
+        so it stays behind HEARD_DICT_RESCUE until benchmarked per embedder.
+        """
+        if not DICT_RESCUE:
+            return None
+        for key, score in ranked[:RESCUE_RANK]:
+            if key != "launch_app:app":
+                continue
+            if score < RESCUE_FLOOR:
+                return None
+            return key if _dict_hit(extract_app_phrase(query)) else None
+        return None
 
     def _build_call(self, key: str, query: str) -> dict | None:
         tool, static_args, _ = PROTOTYPES[key]
